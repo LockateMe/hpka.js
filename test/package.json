@@ -1,0 +1,17 @@
+{
+  "name": "hpkajs-test-server",
+  "version": "0.1.0",
+  "description": "A dumb test server implementing HPKA. To be used to test the in-browser implementation of HPKA",
+  "main": "server.js",
+  "dependencies": {
+    "hpka": "^0.3.7",
+    "sodium": "git+https://github.com/Mowje/node-sodium.git"
+  },
+  "devDependencies": {},
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node server.js"
+  },
+  "author": "Ahmad Ben Mrad",
+  "license": "MIT"
+}

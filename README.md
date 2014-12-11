@@ -9,8 +9,7 @@ __NOTE:__ For Ed25519 signatures only!
 This library is dependent on [libsodium](https://github.com/jedisct1/libsodium). You need to include a [wrapped and emscripten](https://github.com/LockateMe/libsodium) compiled version of it.
 
 Prerequisites:
-* libtool (necessary to compile libsodium)
-* autoconfig (necessary to compile libsodium)
+* autotools (necessary to compile libsodium)
 * emscripten (necessary to compile libsodium to javascript)
 * nodejs (necessary to build the dynamic wrapper for the js build and run tests)
 
@@ -31,3 +30,7 @@ git clone https://github.com/LockateMe/libsodium.git
 ## Test
 
 This library hasn't been tested yet. A blank & dumb server will be implemented (inspired probably from [this one](https://github.com/Mowje/node-hpka/blob/master/test.js))
+
+## License
+
+This library is distributed under the MIT license.
