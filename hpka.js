@@ -6,6 +6,8 @@ var hpka = (function(){
 	var is_hex = libsodium.is_hex;
 	var from_hex = libsodium.from_hex;
 	var to_hex = libsodium.to_hex;
+	var from_base64 = libsodium.from_base64;
+	var to_base64 = libsodium.to_base64;
 
 	function supportedAlgorithms(){return ['ed25519'];}
 	lib.supportedAlgorithms = supportedAlgorithms;
@@ -408,7 +410,7 @@ var hpka = (function(){
 			decodedKeyPair.privateKey = keyPair.privateKey;
 		} else throw new TypeError('privateKey must either be a hex-string or a buffer');
 
-		
+
 	}
 
 	function buildPayload(keyPair, username, userAction, httpMethod, hostAndPath){
@@ -455,7 +457,7 @@ var hpka = (function(){
 
 		//Sign and return HPKA headers
 		var hpkaSignature = libsodium.crypto_sign_detached(signedBlob, decodedKeyPair.privateKey);
-		return {'req': base64EncArr(hpkaReqBuffer), 'sig': base64EncArr(hpkaSignature)};
+		return {'req': to_base64(hpkaReqBuffer), 'sig': to_base64(hpkaSignature)};
 	}
 	lib.buildPayload = buildPayload;
 
@@ -514,96 +516,6 @@ var hpka = (function(){
 		window.crypto.getRandomValues(b);
 		return b;
 	}
-
-	/**
-	* Base64 <-> Uint8Array conversion tools.
-	* Harvested from MDN:
-	* https://developer.mozilla.org/en-US/docs/Web/JavaScript/Base64_encoding_and_decoding
-	*/
-	function b64ToUint6 (nChr) {
-
-		return nChr > 64 && nChr < 91 ?
-			nChr - 65
-			: nChr > 96 && nChr < 123 ?
-			nChr - 71
-			: nChr > 47 && nChr < 58 ?
-			nChr + 4
-			: nChr === 43 ?
-			62
-			: nChr === 47 ?
-			63
-			:
-			0;
-
-	}
-
-	function base64DecToArr (sBase64, nBlocksSize) {
-
-		var
-			sB64Enc = sBase64.replace(/[^A-Za-z0-9\+\/]/g, ""), nInLen = sB64Enc.length,
-			nOutLen = nBlocksSize ? Math.ceil((nInLen * 3 + 1 >> 2) / nBlocksSize) * nBlocksSize : nInLen * 3 + 1 >> 2, taBytes = new Uint8Array(nOutLen);
-
-		for (var nMod3, nMod4, nUint24 = 0, nOutIdx = 0, nInIdx = 0; nInIdx < nInLen; nInIdx++) {
-			nMod4 = nInIdx & 3;
-			nUint24 |= b64ToUint6(sB64Enc.charCodeAt(nInIdx)) << 18 - 6 * nMod4;
-			if (nMod4 === 3 || nInLen - nInIdx === 1) {
-			for (nMod3 = 0; nMod3 < 3 && nOutIdx < nOutLen; nMod3++, nOutIdx++) {
-				taBytes[nOutIdx] = nUint24 >>> (16 >>> nMod3 & 24) & 255;
-			}
-			nUint24 = 0;
-
-			}
-		}
-
-		return taBytes;
-	}
-
-	/* Base64 string to array encoding */
-
-	function uint6ToB64 (nUint6) {
-
-		return nUint6 < 26 ?
-			nUint6 + 65
-			: nUint6 < 52 ?
-			nUint6 + 71
-			: nUint6 < 62 ?
-			nUint6 - 4
-			: nUint6 === 62 ?
-			43
-			: nUint6 === 63 ?
-			47
-			:
-			65;
-
-	}
-
-	function base64EncArr (aBytes) {
-
-		var nMod3 = 2, sB64Enc = "";
-
-		for (var nLen = aBytes.length, nUint24 = 0, nIdx = 0; nIdx < nLen; nIdx++) {
-			nMod3 = nIdx % 3;
-			if (nIdx > 0 && (nIdx * 4 / 3) % 76 === 0) { sB64Enc += "\r\n"; }
-			nUint24 |= aBytes[nIdx] << (16 >>> nMod3 & 24);
-			if (nMod3 === 2 || aBytes.length - nIdx === 1) {
-			sB64Enc += String.fromCharCode(uint6ToB64(nUint24 >>> 18 & 63), uint6ToB64(nUint24 >>> 12 & 63), uint6ToB64(nUint24 >>> 6 & 63), uint6ToB64(nUint24 & 63));
-			nUint24 = 0;
-			}
-		}
-
-		return sB64Enc.substr(0, sB64Enc.length - 2 + nMod3) + (nMod3 === 2 ? '' : nMod3 === 1 ? '=' : '==');
-
-	}
-
-	var base64 = {
-		Uint8ArrayToBase64: base64EncArr,
-		to_base64: base64EncArr,
-		Base64ToUint8Array: base64DecToArr,
-		from_base64: base64DecToArr
-	};
-
-	lib.base64 = base64;
-
 
 	return lib;
 })();
