@@ -10,7 +10,6 @@ var hpka = (function(){
 	var to_base64 = libsodium.to_base64;
 
 	function supportedAlgorithms(){return ['ed25519'];}
-	lib.supportedAlgorithms = supportedAlgorithms;
 
 	function getVerbId(verb){
 		if (typeof verb != 'string') throw new TypeError('verb must be a string');
@@ -58,16 +57,15 @@ var hpka = (function(){
 			//throw new Error('Key generation with password not implemented yet');
 		} else return keyEncode(ed25519KeyPair, 'ed25519');
 	}
-	lib.createIdentityKey = createKey;
 
 	function changeKeyPassword(keyBuffer, currentPassword, newPassword){
 
 	}
-	lib.changeKeyPassword = changeKeyPassword;
 
 	function keyEncode(keyPair, keyType){
 		if (typeof keyPair != 'object') throw new TypeError('keyPair must be an object');
 		if (!(keyPair.publicKey && (keyPair.privateKey || keyPair.secretKey))) throw new TypeError('keyPair must contain public and private keys');
+		keyType = keyPair.keyType || keyType;
 		if (typeof keyType != 'string') throw new TypeError('keyType must be a string');
 		if (!(keyType == 'ed25519' || keyType == 'curve25519')) throw new TypeError('key must either be ed25519 or curve25519');
 
@@ -392,13 +390,28 @@ var hpka = (function(){
 	function loadKey(keyBuffer, password){
 		if (!((typeof keyBuffer == 'string' && is_hex(keyBuffer)) || keyBuffer instanceof Uint8Array)) throw new TypeError('keyBuffer must either be a hex-string or a buffer');
 		if (!(password && (typeof password == 'string' || password instanceof Uint8Array))) throw new TypeError('password must either be a string or a buffer');
+
+		var b = (keyBuffer instanceof Uint8Array ? keyBuffer : from_hex(keyBuffer));
+		if (password){
+			var keyType = b[0];
+			var encryptedKeyBuffer = new Uint8Array(b.length - 1);
+			for (var i = 1; i < b.length; i++){
+				encryptedKeyBuffer[i-1] = b[i];
+			}
+			var decryptedKeyBuffer = scryptEncrypt(encryptedKeyBuffer, password);
+			return keyDecode(decryptedKeyBuffer);
+		} else {
+			return keyDecode(b);
+		}
 	}
 
 	function saveKey(keyPair, password){
-		if (typeof keyPair != 'object') throw new TypeError('');
+		if (typeof keyPair != 'object') throw new TypeError('keyPair must be an object');
 		if (!(typeof password == 'string' || password instanceof Uint8Array)) throw new TypeError('password must either be a string or a Uint8Array buffer');
 		var decodedKeyPair = {};
 
+		decodedKeyPair.keyType = keyPair.keyType;
+		if (!(decodedKeyPair.keyType == 'curve25519' || decodedKeyPair.keyType == 'ed25519')) throw new TypeError('Key type must either be Ed25519 or Curve25519');
 		if (is_hex(keyPair.publicKey)){
 			decodedKeyPair.publicKey = from_hex(keyPair.publicKey);
 		} else if (keyPair.publicKey instanceof Uint8Array){
@@ -410,7 +423,16 @@ var hpka = (function(){
 			decodedKeyPair.privateKey = keyPair.privateKey;
 		} else throw new TypeError('privateKey must either be a hex-string or a buffer');
 
-
+		var encodedKeyPair = keyEncode(decodedKeyPair);
+		if (password){
+			var encryptedKeyBuffer = scryptEncrypt(encodedKeyPair, password);
+			var savedKeyBuffer = new Uint8Array(encryptedKeyBuffer.length + 1);
+			savedKeyBuffer[0] = (decodedKeyPair.keyType == 'curve25519' ? 0x05 : 0x06);
+			for (var i = 0; i < encryptedKeyBuffer.length; i++){
+				savedKeyBuffer[i+1] = encryptedKeyBuffer[i];
+			}
+			return savedKeyBuffer;
+		} else return encodedKeyPair;
 	}
 
 	function buildPayload(keyPair, username, userAction, httpMethod, hostAndPath){
@@ -459,7 +481,6 @@ var hpka = (function(){
 		var hpkaSignature = libsodium.crypto_sign_detached(signedBlob, decodedKeyPair.privateKey);
 		return {'req': to_base64(hpkaReqBuffer), 'sig': to_base64(hpkaSignature)};
 	}
-	lib.buildPayload = buildPayload;
 
 	function buildPayloadWithoutSignature(keyPair, username, userAction){
 		var bufferLength = 0;
@@ -516,6 +537,13 @@ var hpka = (function(){
 		window.crypto.getRandomValues(b);
 		return b;
 	}
+
+	lib.supportedAlgorithms = supportedAlgorithms;
+	lib.createIdentityKey = createKey;
+	//lib.changeKeyPassword = changeKeyPassword;
+	lib.loadKey = loadKey;
+	lib.saveKey = saveKey;
+	lib.buildPayload = buildPayload;
 
 	return lib;
 })();
