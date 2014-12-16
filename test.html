@@ -1,0 +1,35 @@
+<!DOCTYPE 5>
+<html>
+	<head>
+		<title>Test page for in-browser HPKA</title>
+	</head>
+	<body>
+		<button id="test_btn"></button>
+		<div id="test_results">
+
+		</div>
+		<script src="libsodium.js"></script>
+		<script src="libsodium-wrap.js"></script>
+		<script src="hpka.js"></script>
+		<script>
+			var reqOptions = {
+				host: 'localhost',
+				port: 2500,
+				path: 'get'
+			};
+
+			test_btn.addEventListener('click', test, false);
+
+			function test(){
+				var username = 'KzEyMzQ1Njc4OQ=='; // "+123456789" to base64
+				var userKey = hpka.createIdentityKey();
+
+				function unauthReq(callback){
+					var xhr = new XMLHttpRequest();
+					
+				}
+
+			}
+		</script>
+	</body>
+</html>
