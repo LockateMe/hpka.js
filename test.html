@@ -14,8 +14,7 @@
 		<script>
 			var reqOptions = {
 				host: 'localhost',
-				port: 2500,
-				path: 'get'
+				port: 2500
 			};
 
 			test_btn.addEventListener('click', test, false);
@@ -25,10 +24,124 @@
 				var userKey = hpka.createIdentityKey();
 
 				function unauthReq(callback){
+					var lStr = '';
+					log('Testing unauthenticated request');
 					var xhr = new XMLHttpRequest();
-					
+					xhr.onload = function(){
+						log('Response for unauthenticated request:<br>' + xhr.responseText);
+						callback(lStr);
+					};
+					xhr.open('get', buildUrl('/'), true);
+					xhr.send();
+
+					function log(s){
+						lStr+=s+'<br>';
+					}
 				}
 
+				//callback(message, fail)
+				function registrationReq(callback){
+					var lStr = '';
+					log('Testing user registration');
+					var xhr = new XMLHttpRequest();
+					xhr.onload = function(){
+						if (xhr.status == 200){
+							log('User registered with success');
+							callback(lStr, false);
+						} else {
+							log('Error on user registration:<br>' + xhr.status + '<br>' + xhr.responseText);
+							callback(lStr, true);
+						}
+					};
+					xhr.open('get', buildUrl('/'), true);
+					var hpkaPayload = hpka.buildPayload(userKey, username, 0x01, 'get', hostAndPath('/'));
+					xhr.setRequestHeader('HPKA-Req', hpkaPayload.req);
+					xhr.setRequestHeader('HPKA-Signature', hpkaPayload.sig);
+					xhr.send();
+
+					function log(s){
+						lStr+=s+'<br>';
+					}
+				}
+
+				//callback(message, fail)
+				function authenticatedReq(callback){
+					var lStr = '';
+					log('Testing an authenticated request');
+					var xhr = new XMLHttpRequest();
+					xhr.onload = function(){
+						if (xhr.status == 200 && xhr.responseText == 'Authenticated as : ' + username){
+							log('Authenticated request successful');
+							callback(lStr);
+						} else {
+							log('Error on authenticated request:<br>' + xhr.status + '<br>' + xhr.responseText);
+							callback(lStr);
+						}
+					};
+					xhr.open('get', buildUrl('/'), true);
+					var hpkaPayload = hpka.buildPayload(userKey, username, 0x00, 'get', hostAndPath('/'));
+					xhr.setRequestHeader('HPKA-Req', hpkaPayload.req);
+					xhr.setRequestHeader('HPKA-Signature', hpkaPayload.sig);
+					xhr.send();
+
+					function log(s){
+						lStr+=s+'<br>';
+					}
+				}
+
+				function deletionReq(callback){
+					var lStr='';
+					log('Testing an account deletion request');
+					var xhr = new XMLHttpRequest();
+					xhr.onload = function(){
+						if (xhr.status == 200 && res.responseText == username + ' has been deleted!'){
+							log('Account deleted with success');
+							callback(lStr);
+						} else {
+							log('Account deletion failed:<br>' + xhr.status + '<br>' + xhr.responseText);
+							callback(lStr, true);
+						}
+					};
+					xhr.open('get', buildUrl('/'), true);
+					var hpkaPayload = hpka.buildPayload(userKey, username, 0x03, 'get', hostAndPath('/'));
+					xhr.setRequestHeader('HPKA-Req', hpkaPayload.req);
+					xhr.setRequestHeader('HPKA-Signature', hpkaPayload.sig);
+					xhr.send();
+
+					function log(s){
+						lStr+=s+'<br>';
+					}
+				}
+
+				//Delete result pane
+				test_results.innerHTML = 'Testing in-browser hpka';
+				unauthReq(function(lStr){
+					test_results.innerHTML += lStr + '<br>';
+
+					registrationReq(function(lStr, fail){
+						test_results.innerHTML += lStr + '<br>';
+						if (fail) return;
+
+						authenticatedReq(function(lStr, fail){
+							test_results.innerHTML += lStr + '<br>';
+							if (fail) return;
+
+							deletionReq(function(lStr, fail){
+								test_results.innerHTML += lStr + '<br>';
+								test_results.innerHTML += 'Tests completed';
+							});
+						});
+					});
+				});
+
+			}
+
+			function buildUrl(path){
+				return 'http://' + reqOptions.host + ':' + reqOptions.port + path;
+			}
+
+			function hostAndPath(path){
+				return req.host + path;
 			}
 		</script>
 	</body>
