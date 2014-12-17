@@ -2,6 +2,9 @@
 
 var http = require('http');
 var hpka = require('hpka');
+var fs = require('fs');
+var path = require('path');
+var mime = require('mime');
 
 //In-memory list of registered users
 var userList = {};
@@ -61,28 +64,46 @@ function checkPubKeyObjects(pubKey1, pubKey2){
 var requestHandler = function(req, res){
 	var headers = {'Content-Type': 'text/plain'};
 	var body;
-	if (req.username){
-		//console.log(req.method + ' ' + req.url + ' authenticated request by ' + req.username);
-		body = 'Authenticated as : ' + req.username;
-		//Manual signature verification
-		var hpkaReq = req.headers['hpka-req'];
-		var hpkaSig = req.headers['hpka-signature'];
-		var method = req.method;
-		var reqUrl = 'http://' + (req.headers.hostname || req.headers.host) + req.url
-		//console.log('HpkaReq: ' + hpkaReq + '; HpkaSig: ' + hpkaSig + '; ' + method + '; reqUrl: ' + reqUrl);
-		hpka.verifySignature(hpkaReq, hpkaSig, reqUrl, method, function(isValid, username, hpkaReq){
-			if (!isValid) console.log('External validation failed');
-			//else console.log('External validation success: ' + username + ': ' + JSON.stringify(hpkaReq));
-		});
+	if (req.url == '/'){
+		if (req.username){
+			//console.log(req.method + ' ' + req.url + ' authenticated request by ' + req.username);
+			body = 'Authenticated as : ' + req.username;
+			//Manual signature verification
+			var hpkaReq = req.headers['hpka-req'];
+			var hpkaSig = req.headers['hpka-signature'];
+			var method = req.method;
+			var reqUrl = 'http://' + (req.headers.hostname || req.headers.host) + req.url
+			//console.log('HpkaReq: ' + hpkaReq + '; HpkaSig: ' + hpkaSig + '; ' + method + '; reqUrl: ' + reqUrl);
+			hpka.verifySignature(hpkaReq, hpkaSig, reqUrl, method, function(isValid, username, hpkaReq){
+				if (!isValid) console.log('External validation failed');
+				//else console.log('External validation success: ' + username + ': ' + JSON.stringify(hpkaReq));
+			});
+		} else {
+			//console.log(req.method + ' ' + req.url + ' anonymous request');
+			body = 'Anonymous user';
+		}
+		headers['Content-Length'] = body.length;
+		res.writeHead(200, headers);
+		res.write(body);
+		res.end();
 	} else {
-		//console.log(req.method + ' ' + req.url + ' anonymous request');
-		body = 'Anonymous user';
+		var filePath = path.join(__dirname, req.url.substring(1));
+		console.log('File requested: ' + filePath);
+		if (!fs.existsSync(filePath)){
+			res.writeHead(404);
+			res.write('Not found');
+			res.end();
+			return;
+		}
+		var fileStat = fs.statSync(filePath);
+		var headers = {'Content-Type': mime.lookup(filePath), 'Content-Length': fileStat.size};
+		res.writeHead(200, headers);
+		fs.readFile(filePath, function(err, data){
+			if (err) throw err;
+			res.write(data);
+			res.end();
+		});
 	}
-
-	headers['Content-Length'] = body.length;
-	res.writeHead(200, headers);
-	res.write(body);
-	res.end();
 };
 
 var loginCheck = function(HPKAReq, req, res, callback){

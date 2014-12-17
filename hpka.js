@@ -69,6 +69,8 @@ var hpka = (function(){
 		if (typeof keyType != 'string') throw new TypeError('keyType must be a string');
 		if (!(keyType == 'ed25519' || keyType == 'curve25519')) throw new TypeError('key must either be ed25519 or curve25519');
 
+		console.log('keyPair: ' + JSON.stringify(keyPair));
+
 		//Decode hex if provided in hex
 		var decodedKeyPair = {};
 		var publicKeyParam = keyPair.publicKey;
@@ -132,7 +134,7 @@ var hpka = (function(){
 			bufIndex += decodedKeyPair.publicKey.length;
 			//Writing secret key size
 			encodedB[bufIndex] = libsodium.crypto_sign_secretkeybytes >> 8;
-			encodedB[bufIndex] = libsodium.crypto_sign_secretkeybytes;
+			encodedB[bufIndex+1] = libsodium.crypto_sign_secretkeybytes;
 			bufIndex += 2;
 			//Writing secret key
 			for (var i = 0; i < decodedKeyPair.privateKey.length; i++){
@@ -205,6 +207,7 @@ var hpka = (function(){
 			//Reading claimed private key size and check validity
 			var advPrivKeySize = (enc[bufIndex] << 8) + enc[bufIndex+1];
 			bufIndex += 2;
+			console.log('advPrivKeySize: ' + advPrivKeySize);
 			if (advPrivKeySize != libsodium.crypto_sign_secretkeybytes) throw new Error('Corrupted key buffer');
 			//Reading private key
 			var privKey = new Uint8Array(libsodium.crypto_sign_secretkeybytes);
@@ -389,7 +392,7 @@ var hpka = (function(){
 
 	function loadKey(keyBuffer, password){
 		if (!((typeof keyBuffer == 'string' && is_hex(keyBuffer)) || keyBuffer instanceof Uint8Array)) throw new TypeError('keyBuffer must either be a hex-string or a buffer');
-		if (!(password && (typeof password == 'string' || password instanceof Uint8Array))) throw new TypeError('password must either be a string or a buffer');
+		if (password && !(typeof password == 'string' || password instanceof Uint8Array)) throw new TypeError('password must either be a string or a buffer');
 
 		var b = (keyBuffer instanceof Uint8Array ? keyBuffer : from_hex(keyBuffer));
 		if (password){
@@ -442,7 +445,7 @@ var hpka = (function(){
 		var vId = getVerbId(httpMethod);
 		if (!vId) throw new TypeError('Invalid HTTP method');
 
-		var decodedKeyPair;
+		var decodedKeyPair = {};
 
 		if (is_hex(keyPair.publicKey)){
 			decodedKeyPair.publicKey = from_hex(keyPair.publicKey);
@@ -459,12 +462,12 @@ var hpka = (function(){
 		if (decodedKeyPair.publicKey.length != libsodium.crypto_sign_publickeybytes) throw new TypeError('Invalid public key size');
 		if (decodedKeyPair.privateKey.length != libsodium.crypto_sign_secretkeybytes) throw new TypeError('Invalid private key size');
 
-		var usernameBuffer = libsodium.utf8_decode(username);
+		var usernameBuffer = libsodium.decode_utf8(username);
 		if (usernameBuffer.length > 255) throw new TypeError('Username cannot be more than 255 bytes long');
 
 		var hpkaReqBuffer = buildPayloadWithoutSignature(decodedKeyPair, usernameBuffer, userAction);
 
-		var hostAndPathBuf = libsodium.utf8_decode(hostAndPath);
+		var hostAndPathBuf = libsodium.decode_utf8(hostAndPath);
 		var hostAndPathLength = hostAndPathBuf.length;
 		var signedBlobLength = hpkaReqBuffer.length + hostAndPathLength + 1; //The 1 is for the HTTP verbId
 		var signedBlob = new Uint8Array(signedBlobLength);

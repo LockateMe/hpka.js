@@ -2,24 +2,23 @@
 
 if [ -d "./node_modules" ]
 then
-	echo "Server packages already installed\n"
+	echo "Server packages already installed"
 else
-	echo "Installing the server's packages\n"
+	echo "Installing the server's packages"
 	npm install
 fi
 if [ -d "./libsodium" ]
 then
-	echo "Libsodium is already cloned. Pulling latest commits\n"
+	echo "Libsodium is already cloned. Pulling latest commits"
 	cd libsodium
 	git pull origin master
-	cd ..
 else
-	echo "Cloning libsodium\n"
+	echo "Cloning libsodium"
 	git clone https://github.com/LockateMe/libsodium.git
+	cd libsodium
 fi
-cd libsodium
-echo $(pwd)
 ./autogen.sh
 ./dist-build/emscripten.sh
-cp libsodium-js/lib/libsodium.js* ../../
-cp libsodium-js/lib/libsodium-wrap.js ../../
+cp libsodium-js/lib/libsodium.js* ../
+cp libsodium-js/lib/libsodium-wrap.js ../
+cp ../hpka.js ./

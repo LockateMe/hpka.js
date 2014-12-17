@@ -5,6 +5,7 @@
   "main": "server.js",
   "dependencies": {
     "hpka": "^0.3.7",
+    "mime": "^1.2.11",
     "sodium": "git+https://github.com/Mowje/node-sodium.git"
   },
   "devDependencies": {},

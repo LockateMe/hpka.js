@@ -4,7 +4,7 @@
 		<title>Test page for in-browser HPKA</title>
 	</head>
 	<body>
-		<button id="test_btn"></button>
+		<button id="test_btn">Test</button>
 		<div id="test_results">
 
 		</div>
@@ -21,7 +21,9 @@
 
 			function test(){
 				var username = 'KzEyMzQ1Njc4OQ=='; // "+123456789" to base64
-				var userKey = hpka.createIdentityKey();
+				var userKeyBuffer = hpka.createIdentityKey();
+				console.log('User key buffer: ' + libsodium.to_hex(userKeyBuffer));
+				var userKey = hpka.loadKey(userKeyBuffer);
 
 				function unauthReq(callback){
 					var lStr = '';
@@ -141,7 +143,7 @@
 			}
 
 			function hostAndPath(path){
-				return req.host + path;
+				return reqOptions.host + path;
 			}
 		</script>
 	</body>
