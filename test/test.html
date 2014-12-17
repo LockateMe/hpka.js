@@ -22,7 +22,6 @@
 			function test(){
 				var username = 'KzEyMzQ1Njc4OQ=='; // "+123456789" to base64
 				var userKeyBuffer = hpka.createIdentityKey();
-				console.log('User key buffer: ' + libsodium.to_hex(userKeyBuffer));
 				var userKey = hpka.loadKey(userKeyBuffer);
 
 				function unauthReq(callback){
@@ -48,6 +47,7 @@
 					var xhr = new XMLHttpRequest();
 					xhr.onload = function(){
 						if (xhr.status == 200){
+							log(xhr.responseText);
 							log('User registered with success');
 							callback(lStr, false);
 						} else {
@@ -77,7 +77,7 @@
 							callback(lStr);
 						} else {
 							log('Error on authenticated request:<br>' + xhr.status + '<br>' + xhr.responseText);
-							callback(lStr);
+							callback(lStr, true);
 						}
 					};
 					xhr.open('get', buildUrl('/'), true);
@@ -96,7 +96,7 @@
 					log('Testing an account deletion request');
 					var xhr = new XMLHttpRequest();
 					xhr.onload = function(){
-						if (xhr.status == 200 && res.responseText == username + ' has been deleted!'){
+						if (xhr.status == 200 && xhr.responseText == username + ' has been deleted!'){
 							log('Account deleted with success');
 							callback(lStr);
 						} else {
@@ -105,7 +105,7 @@
 						}
 					};
 					xhr.open('get', buildUrl('/'), true);
-					var hpkaPayload = hpka.buildPayload(userKey, username, 0x03, 'get', hostAndPath('/'));
+					var hpkaPayload = hpka.buildPayload(userKey, username, 0x02, 'get', hostAndPath('/'));
 					xhr.setRequestHeader('HPKA-Req', hpkaPayload.req);
 					xhr.setRequestHeader('HPKA-Signature', hpkaPayload.sig);
 					xhr.send();

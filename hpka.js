@@ -69,8 +69,6 @@ var hpka = (function(){
 		if (typeof keyType != 'string') throw new TypeError('keyType must be a string');
 		if (!(keyType == 'ed25519' || keyType == 'curve25519')) throw new TypeError('key must either be ed25519 or curve25519');
 
-		console.log('keyPair: ' + JSON.stringify(keyPair));
-
 		//Decode hex if provided in hex
 		var decodedKeyPair = {};
 		var publicKeyParam = keyPair.publicKey;
@@ -207,7 +205,6 @@ var hpka = (function(){
 			//Reading claimed private key size and check validity
 			var advPrivKeySize = (enc[bufIndex] << 8) + enc[bufIndex+1];
 			bufIndex += 2;
-			console.log('advPrivKeySize: ' + advPrivKeySize);
 			if (advPrivKeySize != libsodium.crypto_sign_secretkeybytes) throw new Error('Corrupted key buffer');
 			//Reading private key
 			var privKey = new Uint8Array(libsodium.crypto_sign_secretkeybytes);
@@ -462,12 +459,12 @@ var hpka = (function(){
 		if (decodedKeyPair.publicKey.length != libsodium.crypto_sign_publickeybytes) throw new TypeError('Invalid public key size');
 		if (decodedKeyPair.privateKey.length != libsodium.crypto_sign_secretkeybytes) throw new TypeError('Invalid private key size');
 
-		var usernameBuffer = libsodium.decode_utf8(username);
+		var usernameBuffer = libsodium.encode_utf8(username);
 		if (usernameBuffer.length > 255) throw new TypeError('Username cannot be more than 255 bytes long');
 
 		var hpkaReqBuffer = buildPayloadWithoutSignature(decodedKeyPair, usernameBuffer, userAction);
 
-		var hostAndPathBuf = libsodium.decode_utf8(hostAndPath);
+		var hostAndPathBuf = libsodium.encode_utf8(hostAndPath);
 		var hostAndPathLength = hostAndPathBuf.length;
 		var signedBlobLength = hpkaReqBuffer.length + hostAndPathLength + 1; //The 1 is for the HTTP verbId
 		var signedBlob = new Uint8Array(signedBlobLength);
@@ -482,7 +479,7 @@ var hpka = (function(){
 
 		//Sign and return HPKA headers
 		var hpkaSignature = libsodium.crypto_sign_detached(signedBlob, decodedKeyPair.privateKey);
-		return {'req': to_base64(hpkaReqBuffer), 'sig': to_base64(hpkaSignature)};
+		return {'req': to_base64(hpkaReqBuffer, true), 'sig': to_base64(hpkaSignature, true)};
 	}
 
 	function buildPayloadWithoutSignature(keyPair, username, userAction){
