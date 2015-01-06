@@ -2,6 +2,19 @@
 <html>
 	<head>
 		<title>Test page for in-browser HPKA</title>
+		<style>
+			#test_btn {
+				height: 25px;
+				width: 75px;
+				font-size: 16px;
+				border-radius: 3px;
+				background-color: #dddddd;
+				border-style: solid;
+				border-width: 1px;
+				border-color: #333333;
+				box-shadow: 0px 1px 1px 1px #444444;
+			}
+		</style>
 	</head>
 	<body>
 		<button id="test_btn">Test</button>
@@ -21,8 +34,34 @@
 
 			function test(){
 				var username = 'KzEyMzQ1Njc4OQ=='; // "+123456789" to base64
+				var password = 'password';
 				var userKeyBuffer = hpka.createIdentityKey();
 				var userKey = hpka.loadKey(userKeyBuffer);
+
+				function testKeyEncryption(){
+					var lStr = '';
+					var encryptedKey, decryptedKey;
+					log('Encrypting key using password "' + password + '"');
+					try {
+						encryptedKey = hpka.saveKey(userKey, password);
+						log('Encryption success. Decrypting now with password "' + password + '"');
+					} catch (e){
+						log('Encryption fail. Please see console messages');
+						console.error(e);
+						return;
+					}
+					try {
+						decryptedKey = hpka.loadKey(encryptedKey, password);
+						log('Decryption completed with success');
+					} catch (e){
+						log('Decryption fail. Please see console messages');
+						console.error(e);
+						return;
+					}
+
+					function log(s){lStr+=s+'<br>';}
+					return lStr;
+				}
 
 				function unauthReq(callback){
 					var lStr = '';
@@ -116,7 +155,8 @@
 				}
 
 				//Delete result pane
-				test_results.innerHTML = 'Testing in-browser hpka';
+				test_results.innerHTML = '<h1>Testing in-browser hpka</h1>';
+				test_results.innerHTML += '<br>' + testKeyEncryption() + '<br>';
 				unauthReq(function(lStr){
 					test_results.innerHTML += lStr + '<br>';
 

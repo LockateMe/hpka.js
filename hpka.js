@@ -221,7 +221,7 @@ var hpka = (function(){
 	/* Encrypted buffer format. Numbers are in big endian
     * 2 bytes : r (unsigned short)
     * 2 bytes : p (unsigned short)
-    * 8 bytes : opsLimit (unsigned long)
+    * 4 bytes : opsLimit (unsigned long)
     * 2 bytes: salt size (sn, unsigned short)
     * 2 bytes : nonce size (ss, unsigned short)
     * 4 bytes : key buffer size (x, unsigned long)
@@ -234,10 +234,14 @@ var hpka = (function(){
 		if (!(buffer && buffer instanceof Uint8Array)) throw new TypeError('Buffer must be a Uint8Array');
 		if (!(typeof password == 'string' || password instanceof Uint8Array)) throw new TypeError('Password must be a string or a Uint8Array buffer');
 
+		//console.log('Key plain text: ' + to_hex(buffer));
+
 		var r = 8, p = 1, opsLimit = 16384; //Scrypt parameters
 		var saltSize = 8;
 		var nonceSize = libsodium.crypto_secretbox_noncebytes;
 		var totalSize = 16 + saltSize + nonceSize + buffer.length + libsodium.crypto_secretbox_macbytes;
+
+		//console.log('r: ' + 8 + '\np: ' + p + '\nopsLimit: ' + opsLimit + '\nsaltSize: ' + saltSize + '\nnonceSize: ' + nonceSize);
 
 		var b = new Uint8Array(totalSize);
 		var bIndex = 0;
@@ -250,8 +254,9 @@ var hpka = (function(){
 		b[bIndex+1] = p;
 		bIndex += 2;
 		//Writing opsLimit
-		for (var i = 8; i > 0; i--){
-			b[ bIndex ] = (opsLimit >> (8 * (i - 1)));
+		for (var i = 4; i > 0; i--){
+			b[ bIndex ] = (opsLimit >> (8 * (i - 1))) % 256;
+			//console.log('opsLimit[' + (5 - i).toString() +'] : ' + ((opsLimit >> (8 * (i - 1))) % 256).toString());
 			bIndex++;
 		}
 		//bIndex += 8;
@@ -263,7 +268,7 @@ var hpka = (function(){
 		b[bIndex] = (nonceSize >> 8);
 		b[bIndex+1] = nonceSize;
 		bIndex += 2;
-		//Writing keyBuffer size
+		//Writing encryptedbuffer size
 		var encContentSize = buffer.length + libsodium.crypto_secretbox_macbytes;
 		b[bIndex] = (encContentSize >> 24);
 		b[bIndex+1] = (encContentSize >> 16);
@@ -272,12 +277,14 @@ var hpka = (function(){
 		bIndex += 4;
 		//Writing salt
 		var salt = randomBuffer(saltSize);
+		//console.log('Salt: ' + to_hex(salt));
 		for (var i = 0; i < saltSize; i++){
 			b[ bIndex + i ] = salt[i];
 		}
 		bIndex += saltSize;
 		//Writing nonce
 		var nonce = randomBuffer(nonceSize);
+		//console.log('Nonce: ' + to_hex(nonce));
 		for (var i = 0; i < nonceSize; i++){
 			b[ bIndex + i ] = nonce[i];
 		}
@@ -285,21 +292,22 @@ var hpka = (function(){
 
 		//Derive password into encryption key
 		var encKeyLength = libsodium.crypto_secretbox_keybytes;
-		var encKey = libsodium.crypto_pwhash_scryptsalsa208sha256(password, salt, opsLimit, r, p, encKeyLength);
+		var encKey = libsodium.crypto_pwhash_scryptsalsa208sha256_ll(password, salt, opsLimit, r, p, encKeyLength);
+		//console.log('Encryption key: ' + to_hex(encKey));
 		//Encrypt the content and write it
 		var cipher = libsodium.crypto_secretbox_easy(buffer, nonce, encKey);
 		for (var i = 0; i < cipher.length; i++){
 			b[bIndex+i] = cipher[i];
 		}
 		bIndex += cipher.length;
-
+		//console.log('Ciphertext: ' + to_hex(cipher));
 		return b;
 	}
 
 	function scryptDecrypt(buffer, password){
 		if (!(buffer && buffer instanceof Uint8Array)) throw new TypeError('Buffer must be a Uint8Array');
 		if (!(typeof password == 'string' || passowrd instanceof Uint8Array)) throw new TypeError('password must be a string or a Uint8Array buffer');
-		var minRemainingSize = 16 + libsodium.crypto_secretbox_macbytes; //16 bytes from the above format description + 4 for the MAC appended to the ciphertext
+		var minRemainingSize = 16; //16 bytes from the above format description
 
 		if (in_avail() < minRemainingSize) throw new RangeError('Invalid encrypted buffer format');
 
@@ -318,11 +326,12 @@ var hpka = (function(){
 		minRemainingSize -= 2;
 
 		//Reading opsLimit
-		for (var i = 7; i >= 0; i--){
+		for (var i = 3; i >= 0; i--){
 			opsLimit += (buffer[rIndex] << (8*i));
+			//console.log('opsLimitPart[' + (4 - i).toString() + ']:' + (buffer[rIndex] << (8*i)));
 			rIndex++;
 		}
-		minRemainingSize -= 8;
+		minRemainingSize -= 4;
 
 		if (opsLimit > opsLimitBeforeException) throw new RangeError('opsLimit over the authorized limit of ' + opsLimitBeforeException + ' (limited for performance issues)');
 
@@ -337,6 +346,8 @@ var hpka = (function(){
 		rIndex += 2;
 		minRemainingSize -= 2;
 		minRemainingSize += nonceSize;
+
+		//console.log('r: ' + 8 + '\np: ' + p + '\nopsLimit: ' + opsLimit + '\nsaltSize: ' + saltSize + '\nnonceSize: ' + nonceSize);
 
 		if (in_avail() < minRemainingSize) throw new RangeError('Invalid encrypted buffer format');
 
@@ -359,6 +370,7 @@ var hpka = (function(){
 		}
 		rIndex += saltSize;
 		minRemainingSize -= saltSize;
+		//console.log('Salt: ' + to_hex(salt));
 
 		//Reading nonce
 		var nonce = new Uint8Array(nonceSize);
@@ -367,12 +379,14 @@ var hpka = (function(){
 		}
 		rIndex += nonceSize;
 		minRemainingSize -= nonceSize;
+		//console.log('Nonce: ' + to_hex(nonce));
 
 		//Deriving password into encryption key
 		var encKeyLength = libsodium.crypto_secretbox_keybytes;
-		var encKey = libsodium.crypto_pwhash_scryptsalsa208sha256(password, salt, opsLimit, r, p, encKeyLength);
+		var encKey = libsodium.crypto_pwhash_scryptsalsa208sha256_ll(password, salt, opsLimit, r, p, encKeyLength);
+		//console.log('Encryption key: ' + to_hex(encKey));
 
-		var cipherText = new Uint8Array(encBufferSize);
+		var cipherText = new Uint8Array(encBufferSize );
 		for (var i = 0; i < encBufferSize; i++){
 			cipherText[i] = buffer[rIndex+i];
 		}
@@ -380,7 +394,9 @@ var hpka = (function(){
 		minRemainingSize -= encBufferSize;
 
 		//Decrypting the ciphertext
-		var plainText = libsodium.crypto_secretbox_open_easy(cipherText, encKey, nonce);
+		//console.log('Ciphertext: ' + to_hex(cipherText));
+		var plainText = libsodium.crypto_secretbox_open_easy(cipherText, nonce, encKey);
+		//console.log('Key plain text:' + to_hex(plainText));
 		return plainText; //If returned result is undefined, then invalid password (or corrupted buffer)
 
 		function in_avail(){return buffer.length - rIndex;}
@@ -398,7 +414,11 @@ var hpka = (function(){
 			for (var i = 1; i < b.length; i++){
 				encryptedKeyBuffer[i-1] = b[i];
 			}
-			var decryptedKeyBuffer = scryptEncrypt(encryptedKeyBuffer, password);
+			var decryptedKeyBuffer = scryptDecrypt(encryptedKeyBuffer, password);
+			if (!decryptedKeyBuffer){
+				throw new Error('Invalid password or corrupted buffer!');
+			}
+			//console.log('Decrypted encoded key pair: ' + to_hex(decryptedKeyBuffer));
 			return keyDecode(decryptedKeyBuffer);
 		} else {
 			return keyDecode(b);
@@ -424,6 +444,7 @@ var hpka = (function(){
 		} else throw new TypeError('privateKey must either be a hex-string or a buffer');
 
 		var encodedKeyPair = keyEncode(decodedKeyPair);
+		//console.log('Encoded key pair: ' + to_hex(encodedKeyPair));
 		if (password){
 			var encryptedKeyBuffer = scryptEncrypt(encodedKeyPair, password);
 			var savedKeyBuffer = new Uint8Array(encryptedKeyBuffer.length + 1);
