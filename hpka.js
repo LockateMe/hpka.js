@@ -40,6 +40,111 @@ var hpka = (function(){
 		else return undefined;
 	}
 
+	function client(username, keyBuffer, password){
+		if (typeof username != 'string') throw new TypeError('username must be a string');
+		if (!(keyBuffer && keyBuffer instanceof Uint8Array)) throw new TypeError('keyBuffer must be a Uint8Array');
+		if (password && !(typeof password == 'string' || password instanceof Uint8Array)) throw new TypeError('passowrd must be a Uint8Array');
+
+		var httpAgent = defaultAgent;
+		var _username, _password, _keyPair;
+		_username = username;
+		_keyPair = loadKey(keyBuffer, password);
+
+		this.request = function(reqOptions, callback){
+			doHpkaReq(0x00, reqOptions, callback);
+		};
+
+		this.registerAccount = function(reqOptions, callback){
+			doHpkaReq(0x01, reqOptions, callback);
+		};
+
+		this.deleteAccount = function(reqOptions, callback){
+			doHpkaReq(0x02, reqOptions, callback);
+		};
+
+		this.setHttpAgent = function(agent){
+			if (typeof agent != 'function') throw new TypeError('agent must be a function');
+			httpAgent = agent;
+		};
+
+		function hostAndPath(reqOptions){
+			return reqOptions.host + reqOptions.path;
+		}
+
+		function doHpkaReq(actionCode, reqOptions, callback){
+			if (!(typeof actionCode == 'number' && Math.floor(actionCode) == actionCode && actionCode >= 0x00 && actionCode <= 0x04)) throw new TypeError('Invalid actionCode');
+			if (typeof reqOptions != 'object') throw new TypeError('reqOptions must be an object');
+			if (typeof callback != 'function') throw new TypeError('callback must be a function');
+			validateReqOptions(reqOptions);
+
+			var hpkaPayload = hpka.buildPayload(_keyPair, _username, actionCode, reqOptions.method, hostAndPath(reqOptions));
+			if (!reqOptions.headers) reqOptions.headers = {};
+			reqOptions.headers['HPKA-Req'] = hpkaPayload.req;
+			reqOptions.headers['HPKA-Signature'] = hpkaPayload.sig;
+			httpAgent(reqOptions, callback);
+		}
+	}
+
+	/*
+	* reqOptions: {host, port, path, method, headers, body, protocol}
+	* callback: (err, statusCode, body)
+	*/
+	function defaultAgent(reqOptions, callback){
+		if (typeof reqOptions != 'object') throw new TypeError('reqOptions must be an object');
+		if (typeof callback != 'function') throw new TypeError('callback must be a function');
+
+		validateReqOptions(reqOptions);
+
+		var xhReq = new XMLHttpRequest();
+		var reqUrl = reqOptions.protocol + '://' + reqOptions.host + ':' + reqOptions.port.toString() + reqOptions.path;
+		xhReq.open(reqOptions.method, reqUrl, true);
+		xhReq.onload = function(){
+			callback(null, xhReq.status, xhReq.responseText);
+		};
+		xhReq.onerror = function(e){
+			callback(e);
+		};
+		xhReq.onabort = function(e){
+			callback(e);
+		}
+
+		if (reqOptions.headers){
+			var headersNames = Object.keys(reqOptions.headers);
+			for (var i = 0; i < headersNames.length; i++) xhReq.setRequestHeader(headersNames[i], reqOptions.headers[headersNames[i]]);
+		}
+
+		if (reqOptions.body){
+			var bodyStr;
+			if (typeof reqOptions.body == 'object'){
+				xhReq.setRequestHeader('Content-Type', 'appplication/json');
+				try {
+					bodyStr = JSON.stringify(reqOptions.body);
+				} catch (e){
+					throw new Error('Cannot stringify body object. Please check for circular references');
+					return;
+				}
+			} else bodyStr = reqOptions.body;
+			xhReq.send(bodyStr);
+		} else xhReq.send();
+	}
+
+	function validateReqOptions(reqOptions){
+		if (typeof reqOptions != 'object') throw new TypeError('reqOptions must be an object');
+		reqOptions.path = reqOptions.path || '/';
+		reqOptions.port = Number(reqOptions.port) || 443;
+		reqOptions.protocol = reqOptions.protocol || 'https';
+		reqOptions.method = reqOptions.method || 'get';
+
+		if (typeof reqOptions.host != 'string') throw new TypeError('reqOptions.host must be a defined string');
+		if (typeof reqOptions.path != 'string') throw new TypeError('reqOptions.path must be a string');
+		if (reqOptions.path.indexOf('/') != 0) throw new TypeError('reqOptions.path must start with a /');
+		if (reqOptions.headers && typeof reqOptions.headers != 'object') throw new TypeError('when defined, reqOptions.headers must be an object');
+		if (!(typeof reqOptions.method == 'string' && getVerbId(reqOptions.method))) throw new TypeError('reqOptions.method must be a string and a valid HTTP method');
+		if (!(typeof reqOptions.port == 'number' && !isNaN(reqOptions.port) && Math.floor(reqOptions.port) == reqOptions.port && reqOptions.port > 0 && reqOptions.port < 65536)) throw new TypeError('reqOptions.port must be a positive integer between 0 and 65536');
+		if (!(typeof reqOptions.protocol == 'string' && (reqOptions.protocol == 'http' || reqOptions.protocol == 'https'))) throw new TypeError('Protocol must either be "http" or "https"');
+		if (reqOptions.body && !(typeof reqOptions.body == 'object' || typeof reqOptions.body == 'string')) throw new TypeError('when defined, reqOptions.body must either an object or a string');
+	}
+
 	function createKey(password){
 		if (password && !(password instanceof Uint8Array || typeof password == 'string')) throw new TypeError('When defined, password must either be a string or a Uint8Array');
 		var ed25519Seed = randomBuffer(libsodium.crypto_sign_seedbytes);
@@ -565,6 +670,8 @@ var hpka = (function(){
 	lib.loadKey = loadKey;
 	lib.saveKey = saveKey;
 	lib.buildPayload = buildPayload;
+	lib.Client = client;
+	lib.defaultAgent = defaultAgent;
 
 	return lib;
 })();
