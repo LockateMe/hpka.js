@@ -46,7 +46,7 @@ var hpka = (function(){
 		if (password && !(typeof password == 'string' || password instanceof Uint8Array)) throw new TypeError('passowrd must be a Uint8Array');
 
 		var httpAgent = defaultAgent;
-		var _username, _password, _keyPair;
+		var _username, _password, _keyPair, _keyTtl, _keyClearInterval;
 		_username = username;
 		_keyPair = loadKey(keyBuffer, password);
 
@@ -66,6 +66,40 @@ var hpka = (function(){
 			if (typeof agent != 'function') throw new TypeError('agent must be a function');
 			httpAgent = agent;
 		};
+
+		this.setKeyTtl = function(ttl){
+			if (!(typeof ttl == 'number' && ttl > 0 && Math.floor(ttl) == ttl)) throw new TypeError('ttl must be a strictly positive integer');
+			_keyTtl = ttl;
+			_keyClearInterval = setInterval(ttlEndHandler, _keyTtl);
+		};
+
+		this.resetKeyTtl = function(){
+			if (!(_keyClearInterval && _keyTtl)) return;
+			clearInterval(_keyClearInterval);
+			_keyClearInterval = setInterval(ttlEndHandler, _keyTtl);
+		};
+
+		this.clearKeyTtl = function(){
+			if (!_keyClearInterval) return;
+			clearInterval(_keyClearInterval);
+			_keyClearInterval = null;
+		};
+
+		this.loadKey = function(keyBuffer, password){
+			_keyPair = loadKey(keyBuffer, password);
+		};
+
+		this.containsKey = function(){
+			return !!_keyPair;
+		};
+
+		function ttlEndHandler(){
+			//In case the original buffer was protected by password, remove references to it
+			if (_keyPair.privateKey) delete _keyPair.privateKey;
+			if (_keyPair.publicKey) delete _keyPair.publicKey;
+			if (_keyPair.keyType) delete _keyPair.keyType;
+			if (_keyPair) _keyPair = null;
+		}
 
 		function hostAndPath(reqOptions){
 			return reqOptions.host + reqOptions.path;

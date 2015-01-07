@@ -154,6 +154,68 @@
 					}
 				}
 
+				function testClient(callback){
+					var lStr = '';
+					var e;
+					var c = new hpka.Client(username, userKeyBuffer);
+					var _reqOptions = {
+						host: reqOptions.host,
+						port: reqOptions.port,
+						protocol: 'http',
+						path: '/'
+					};
+
+					function testRegistration(cb){
+						c.registerAccount(_reqOptions, function(err, statusCode, body){
+							if (err){
+								e = err;
+								log('Error while registering account: ' + err);
+							} else {
+								log('Status code after registration: ' + statusCode);
+								log('Response body: ' + body);
+							}
+							cb();
+						});
+					}
+
+					function testRequest(cb){
+						c.request(_reqOptions, function(err, statusCode, body){
+							if (err){
+								e = err;
+								log('Error while making authenticated request: ' + err);
+							} else {
+								log('Status code after authenticated request: ' + statusCode);
+								log('Response body: ' + body);
+							}
+							cb();
+						});
+					}
+
+					function testDeletion(cb){
+						c.deleteAccount(_reqOptions, function(err, statusCode, body){
+							if (err){
+								e = err;
+								log('Error while deleting account: ' + err);
+							} else {
+								log('Status code after account deletion: ' + statusCode);
+								log('Response body: ' + body);
+							}
+							cb();
+						});
+					}
+
+					log('Testing Client object');
+					testRegistration(function(){
+						testRequest(function(){
+							testDeletion(function(){
+								callback(lStr, !!e);
+							});
+						});
+					});
+
+					function log(s){lStr+=s+'<br>';}
+				}
+
 				//Delete result pane
 				test_results.innerHTML = '<h1>Testing in-browser hpka</h1>';
 				test_results.innerHTML += '<br>' + testKeyEncryption() + '<br>';
@@ -170,7 +232,12 @@
 
 							deletionReq(function(lStr, fail){
 								test_results.innerHTML += lStr + '<br>';
-								test_results.innerHTML += 'Tests completed';
+								if (fail) return;
+
+								testClient(function(lStr, fail){
+									test_results.innerHTML += lStr + '<br>';
+									test_results.innerHTML += 'Tests completed';
+								});
 							});
 						});
 					});
