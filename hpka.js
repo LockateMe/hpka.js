@@ -89,7 +89,7 @@ var hpka = (function(){
 			_keyPair = loadKey(keyBuffer, password);
 		};
 
-		this.containsKey = function(){
+		this.keyLoaded = function(){
 			return !!_keyPair;
 		};
 
