@@ -70,13 +70,13 @@ var hpka = (function(){
 		this.setKeyTtl = function(ttl){
 			if (!(typeof ttl == 'number' && ttl > 0 && Math.floor(ttl) == ttl)) throw new TypeError('ttl must be a strictly positive integer');
 			_keyTtl = ttl;
-			_keyClearInterval = setInterval(ttlEndHandler, _keyTtl);
+			_keyClearInterval = setTimeout(ttlEndHandler, _keyTtl);
 		};
 
 		this.resetKeyTtl = function(){
 			if (!(_keyClearInterval && _keyTtl)) return;
-			clearInterval(_keyClearInterval);
-			_keyClearInterval = setInterval(ttlEndHandler, _keyTtl);
+			clearTimeout(_keyClearInterval);
+			_keyClearInterval = setTimeout(ttlEndHandler, _keyTtl);
 		};
 
 		this.clearKeyTtl = function(){
