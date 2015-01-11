@@ -15,7 +15,7 @@ Prerequisites:
 
 Here's how you should do it:
 
-1. Once you've got the hpka.js file, clone the libsodium fork containing the WIP wrapper.
+1. Once you've got the hpka.js file, clone the libsodium fork containing the WIP wrapper.  
 ```
 git clone https://github.com/LockateMe/libsodium.git
 ```
@@ -55,12 +55,13 @@ The library loads in a variable called `hpka`. It exposes the following methods:
 	* `hpka.Client.request(reqOptions, callback(err, statusCode, body))` : Make an HPKA authenticated request
 	* `hpka.Client.registerAccount(reqOptions, callback(err, statusCode, body))` : Make an HPKA account/user creation request
 	* `hpka.Client.deleteAccount(reqOptions, callback(err, statusCode, body))` : Make an HPKA user deletion request
-	* `hpka.Client.setHttpAgent(agent)` : Replace the default HTTP agent by one you specify. It should be a function taking the following parameters : reqOptions, callback; where callback will be a function receiving (err, statusCode, responseBody)
+	* `hpka.Client.setHttpAgent(agent)` : Replace the default HTTP agent by one you specify. It should be a function taking the following parameters : reqOptions, callback; where callback will be a function receiving (err, statusCode, responseBody). Example usage : using HPKA in conjunction with [an https client with certificate pinning in Cordova/Phonegap](https://github.com/LockateMe/PinnedHTTPS-Phonegap-Plugin)
 	* `hpka.Client.loadKey(Buffer|String keyBuffer, [Buffer|String password])` : Load a keypair into the Client
 	* `hpka.Client.keyLoaded()` : Returns whether the client has a keypair loaded in it
-	* `hpka.Client.setKeyTtl(Number ttlMilleseconds)`
-	* `hpka.Client.resetKeyTtl()`
-	* `hpka.Client.clearKeyTtl()`
+	* `hpka.Client.setKeyTtl(Number ttlMilleseconds)` : Set a TTL (time-to-live) for the loaded key, after which it will be unreferenced. Note that the TTL is in milliseconds
+	* `hpka.Client.resetKeyTtl()` : Restart the TTL counter with the current value
+	* `hpka.Client.clearKeyTtl()` : Disable the set TTL
+	* `hpka.Client.hasKeyTtl()` : Get whether the client has a TTL set or not
 * `hpka.defaultAgent(reqOptions, callback)` : The default HTTP (AJAX) agent used in the `Client` object.
 
 ### `reqOptions`

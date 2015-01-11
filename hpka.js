@@ -1,3 +1,9 @@
+/*
+* HPKA in-browser client
+* Written by Ahmad Ben Mrad
+* Distributed under the MIT license
+* See https://github.com/LockateMe/hpka.js for more info
+*/
 var hpka = (function(){
 	var lib = {};
 
@@ -46,7 +52,7 @@ var hpka = (function(){
 		if (password && !(typeof password == 'string' || password instanceof Uint8Array)) throw new TypeError('passowrd must be a Uint8Array');
 
 		var httpAgent = defaultAgent;
-		var _username, _password, _keyPair, _keyTtl, _keyClearInterval;
+		var _username, _password, _keyPair, _keyTtl, _keyClearTimeout;
 		_username = username;
 		_keyPair = loadKey(keyBuffer, password);
 
@@ -70,19 +76,23 @@ var hpka = (function(){
 		this.setKeyTtl = function(ttl){
 			if (!(typeof ttl == 'number' && ttl > 0 && Math.floor(ttl) == ttl)) throw new TypeError('ttl must be a strictly positive integer');
 			_keyTtl = ttl;
-			_keyClearInterval = setTimeout(ttlEndHandler, _keyTtl);
+			_keyClearTimeout = setTimeout(ttlEndHandler, _keyTtl);
 		};
 
 		this.resetKeyTtl = function(){
-			if (!(_keyClearInterval && _keyTtl)) return;
-			clearTimeout(_keyClearInterval);
-			_keyClearInterval = setTimeout(ttlEndHandler, _keyTtl);
+			if (!(_keyClearTimeout && _keyTtl)) return;
+			clearTimeout(_keyClearTimeout);
+			_keyClearTimeout = setTimeout(ttlEndHandler, _keyTtl);
 		};
 
 		this.clearKeyTtl = function(){
-			if (!_keyClearInterval) return;
-			clearInterval(_keyClearInterval);
-			_keyClearInterval = null;
+			if (!_keyClearTimeout) return;
+			clearTimeout(_keyClearTimeout);
+			_keyClearTimeout = null;
+		};
+
+		this.hasKeyTtl = function(){
+			return !!_keyClearTimeout;
 		};
 
 		this.loadKey = function(keyBuffer, password){
@@ -95,6 +105,7 @@ var hpka = (function(){
 
 		function ttlEndHandler(){
 			//In case the original buffer was protected by password, remove references to it
+			_keyClearTimeout = null;
 			if (_keyPair.privateKey) delete _keyPair.privateKey;
 			if (_keyPair.publicKey) delete _keyPair.publicKey;
 			if (_keyPair.keyType) delete _keyPair.keyType;
@@ -700,7 +711,6 @@ var hpka = (function(){
 
 	lib.supportedAlgorithms = supportedAlgorithms;
 	lib.createIdentityKey = createKey;
-	//lib.changeKeyPassword = changeKeyPassword;
 	lib.scryptEncrypt = scryptEncrypt;
 	lib.scryptDecrypt = scryptDecrypt;
 	lib.loadKey = loadKey;

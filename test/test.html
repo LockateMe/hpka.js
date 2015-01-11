@@ -3,9 +3,9 @@
 	<head>
 		<title>Test page for in-browser HPKA</title>
 		<style>
-			#test_btn {
+			.btn {
 				height: 25px;
-				width: 75px;
+				min-width: 75px;
 				font-size: 16px;
 				border-radius: 3px;
 				background-color: #dddddd;
@@ -13,12 +13,14 @@
 				border-width: 1px;
 				border-color: #333333;
 				box-shadow: 0px 1px 1px 1px #444444;
+				margin-right: 4px;
 			}
 		</style>
 	</head>
 	<body>
-		<button id="test_btn">Test</button>
-		<button id="test_ttl_btn">Test Key TTL</button>
+		<button id="test_btn" class="btn">Test</button>
+		<button id="test_ttl_btn" class="btn">Test Key TTL</button>
+		<button id="test_crypto_stress_btn" class="btn">Test crypto stress</button>
 		<div id="test_results">
 
 		</div>
@@ -33,6 +35,7 @@
 
 			test_btn.addEventListener('click', test, false);
 			test_ttl_btn.addEventListener('click', testKeyTtl, false);
+			test_crypto_stress_btn.addEventListener('click', stressCryptoTest, false);
 
 			function test(){
 				var username = 'KzEyMzQ1Njc4OQ=='; // "+123456789" to base64
@@ -248,13 +251,89 @@
 			}
 
 			function testKeyTtl(){
+				var username = 'KzEyMzQ1Njc4OQ=='; // "+123456789" to base64
+				var password = 'password';
+				var userKeyBuffer = hpka.createIdentityKey();
+				var userKey = hpka.loadKey(userKeyBuffer);
+
 				test_results.innerHTML = '<h1>Testing the key TTL feature in the client</h1>';
 				var c = new hpka.Client(username, userKeyBuffer);
 				if (!c.keyLoaded()){
-					test_results.innerHTML += '<br>Error while checking if the key is loaded into the client';
+					log('Error while checking if the key is loaded into the client');
 					return;
 				}
+				if (c.hasKeyTtl()){
+					log('Error while checking that the client has no key ttl set');
+					return;
+				}
+				log('Setting a TTL');
+				c.setKeyTtl(1000);
+				setTimeout(function(){
+					log('Resetting it');
+					c.resetKeyTtl(1000);
+					setTimeout(function(){
+						log('Key should have been unreferenced by now. Checking that.');
+						if (c.keyLoaded()){
+							log('Error while checking that the key has been unreferenced');
+							return;
+						}
+						log('Key has been unreferenced with success');
+						log('Reloading the key for TTL clear test');
+						c.loadKey(userKeyBuffer);
+						log('Key has been reloaded');
+						if (!c.keyLoaded()){
+							log('Error while reloading the key pair');
+							return;
+						}
+						log('Resetting a new TTL value');
+						c.setKeyTtl(1000);
+						setTimeout(function(){
+							log('Clearing the TTL, key pair should still be referenced');
+							c.clearKeyTtl();
+							if (!c.keyLoaded()){
+								log('Error with TTL clearing');
+							} else {
+								log('TTL test passed with succss');
+							}
+						}, 996);
+					}, 1000);
+				}, 950);
 
+				function log(s){test_results.innerHTML+='<br>'+s;}
+			}
+
+			function stressCryptoTest(){
+				test_results.innerHTML = '<h1>Testing the encryption/decryption procedure; the hard way</h1>';
+
+				var keyBuffer = hpka.createIdentityKey();
+				var key = hpka.loadKey(keyBuffer);
+				var pubHex = libsodium.to_hex(key.publicKey);
+				var privHex = libsodium.to_hex(key.privateKey);
+				log('<br>Generated key:<br>Public key: ' + pubHex + '<br>Private key: ' + privHex + '<br>');
+				var password = 'password';
+				var currentKeyBuffer = new Uint8Array(keyBuffer.length);
+
+				for (var i = 0; i < keyBuffer.length; i++) currentKeyBuffer[i] = keyBuffer[i];
+
+				currentKeyBuffer = hpka.saveKey(key, password);
+
+				log('Crypto load test<br>');
+				for (var i = 0; i < 100; i++){
+					currentKey = hpka.loadKey(currentKeyBuffer, password);
+					currentKeyBuffer = hpka.saveKey(currentKey, password);
+					log('.');
+				}
+				log('<br>');
+
+				currentKey = hpka.loadKey(currentKeyBuffer, password);
+				var endPubHex = libsodium.to_hex(currentKey.publicKey);
+				var endPrivHex = libsodium.to_hex(currentKey.privateKey);
+				log('<br>Final key:<br>Public key: ' + endPubHex + '<br>Private key: ' + endPrivHex + '<br>');
+
+				var keysIdentical = pubHex == endPubHex && privHex == endPrivHex;
+				log('Are keys identical: ' + (keysIdentical ? 'yes':'no'));
+
+				function log(s){test_results.innerHTML+=s;}
 			}
 
 			function buildUrl(path){
