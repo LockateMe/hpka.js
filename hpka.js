@@ -7,13 +7,14 @@
 var hpka = (function(){
 	var lib = {};
 
-	if (!libsodium) throw new Error('libsodium is missing!');
+	//if (!libsodium) throw new Error('libsodium is missing!');
+	if (!sodium) throw new Error('The libsodium wrapper (sodium.js) is missing')
 
-	var is_hex = libsodium.is_hex;
-	var from_hex = libsodium.from_hex;
-	var to_hex = libsodium.to_hex;
-	var from_base64 = libsodium.from_base64;
-	var to_base64 = libsodium.to_base64;
+	var is_hex = sodium.is_hex;
+	var from_hex = sodium.from_hex;
+	var to_hex = sodium.to_hex;
+	var from_base64 = sodium.from_base64;
+	var to_base64 = sodium.to_base64;
 
 	function supportedAlgorithms(){return ['ed25519'];}
 
@@ -192,8 +193,8 @@ var hpka = (function(){
 
 	function createKey(password){
 		if (password && !(password instanceof Uint8Array || typeof password == 'string')) throw new TypeError('When defined, password must either be a string or a Uint8Array');
-		var ed25519Seed = randomBuffer(libsodium.crypto_sign_seedbytes);
-		var ed25519KeyPair = libsodium.crypto_sign_seed_keypair(ed25519Seed);
+		var ed25519Seed = randomBuffer(sodium.crypto_sign_seedbytes);
+		var ed25519KeyPair = sodium.crypto_sign_seed_keypair(ed25519Seed);
 
 		if (password){
 			var keyBuffer = keyEncode(ed25519KeyPair, 'ed25519');
@@ -223,29 +224,29 @@ var hpka = (function(){
 		var decodedKeyPair = {};
 		var publicKeyParam = keyPair.publicKey;
 		if (is_hex(publicKeyParam)){
-			decodedKeyPair.publicKey = libsodium.from_hex(publicKeyParam);
+			decodedKeyPair.publicKey = from_hex(publicKeyParam);
 		} else if (publicKeyParam instanceof Uint8Array){
 			decodedKeyPair.publicKey = publicKeyParam;
 		} else throw new TypeError('Invalid public key format. Must either be a Uint8Array or a hex-string');
 
 		var privateKeyParam = keyPair.privateKey || keyPair.secretKey;
 		if (is_hex(privateKeyParam)){
-			decodedKeyPair.privateKey = libsodium.from_hex(privateKeyParam);
+			decodedKeyPair.privateKey = from_hex(privateKeyParam);
 		} else if (privateKeyParam instanceof Uint8Array){
 			decodedKeyPair.privateKey = privateKeyParam;
 		} else throw new TypeError('Invalid private key format. Must either be a Uint8Array or a hex-string');
 
 		if (keyType == 'ed25519'){
-			if (decodedKeyPair.publicKey.length != libsodium.crypto_sign_publickeybytes) throw new Error('Ed25519 public key must be ' + libsodium.crypto_sign_publickeybytes + ' bytes long, and not ' + decodedKeyPair.publicKey.length);
-			if (decodedKeyPair.privateKey.length != libsodium.crypto_sign_secretkeybytes) throw new Error('Ed25519 private key must be ' + libsodium.crypto_sign_secretkeybytes + ' bytes long, and not ' + decodedKeyPair.privateKey.length);
+			if (decodedKeyPair.publicKey.length != sodium.crypto_sign_publickeybytes) throw new Error('Ed25519 public key must be ' + sodium.crypto_sign_publickeybytes + ' bytes long, and not ' + decodedKeyPair.publicKey.length);
+			if (decodedKeyPair.privateKey.length != sodium.crypto_sign_secretkeybytes) throw new Error('Ed25519 private key must be ' + sodium.crypto_sign_secretkeybytes + ' bytes long, and not ' + decodedKeyPair.privateKey.length);
 		} else {
-			if (decodedKeyPair.publicKey.length != libsodium.crypto_box_publickeybytes) throw new Error('Curve25519 public key must be ' + libsodium.crypto_box_publickeybytes + ' bytes long, and not ' + decodedKeyPair.publicKey.length);
-			if (decodedKeyPair.privateKey.length != libsodium.crypto_box_secretkeybytes) throw new Error('Curve25519 private key must be' + libsodium.crypto_box_secretkeybytes + ' bytes long, and not ' + decodedKeyPair.privateKey.length);
+			if (decodedKeyPair.publicKey.length != sodium.crypto_box_publickeybytes) throw new Error('Curve25519 public key must be ' + sodium.crypto_box_publickeybytes + ' bytes long, and not ' + decodedKeyPair.publicKey.length);
+			if (decodedKeyPair.privateKey.length != sodium.crypto_box_secretkeybytes) throw new Error('Curve25519 private key must be' + sodium.crypto_box_secretkeybytes + ' bytes long, and not ' + decodedKeyPair.privateKey.length);
 		}
 
 		// 5 = 1 byte for keyType + 2 bytes for sk length + 2 bytes for pk length
-		var curve25519EncSize = 5 + libsodium.crypto_box_secretkeybytes + libsodium.crypto_box_publickeybytes;
-		var ed25519EncSize = 5 + libsodium.crypto_sign_secretkeybytes + libsodium.crypto_sign_publickeybytes;
+		var curve25519EncSize = 5 + sodium.crypto_box_secretkeybytes + sodium.crypto_box_publickeybytes;
+		var ed25519EncSize = 5 + sodium.crypto_sign_secretkeybytes + sodium.crypto_sign_publickeybytes;
 
 		var encodedB = new Uint8Array(keyType == 'ed25519' ? ed25519EncSize : curve25519EncSize);
 		//Writing keyType byte
@@ -253,8 +254,8 @@ var hpka = (function(){
 		encodedB[0] = (keyType == 'curve25519' ? 0x05 : 0x06);
 		if (keyType == 'curve25519'){
 			//Writing public key size
-			encodedB[bufIndex] = libsodium.crypto_box_publickeybytes >> 8;
-			encodedB[bufIndex+1] = libsodium.crypto_box_publickeybytes;
+			encodedB[bufIndex] = sodium.crypto_box_publickeybytes >> 8;
+			encodedB[bufIndex+1] = sodium.crypto_box_publickeybytes;
 			bufIndex += 2;
 			//Writing public key
 			for (var i = 0; i < decodedKeyPair.publicKey.length; i++){
@@ -262,8 +263,8 @@ var hpka = (function(){
 			}
 			bufIndex += decodedKeyPair.publicKey.length;
 			//Writing secret key size
-			encodedB[bufIndex] = libsodium.crypto_box_secretkeybytes >> 8;
-			encodedB[bufIndex+1] = libsodium.crypto_box_secretkeybytes;
+			encodedB[bufIndex] = sodium.crypto_box_secretkeybytes >> 8;
+			encodedB[bufIndex+1] = sodium.crypto_box_secretkeybytes;
 			bufIndex += 2;
 			//Writing secret key
 			for (var i = 0; i < decodedKeyPair.privateKey.length; i++){
@@ -272,8 +273,8 @@ var hpka = (function(){
 			bufIndex += decodedKeyPair.privateKey.length;
 		} else { //Ed25519
 			//Writing public key size
-			encodedB[bufIndex] = libsodium.crypto_sign_publickeybytes >> 8;
-			encodedB[bufIndex+1] = libsodium.crypto_sign_publickeybytes;
+			encodedB[bufIndex] = sodium.crypto_sign_publickeybytes >> 8;
+			encodedB[bufIndex+1] = sodium.crypto_sign_publickeybytes;
 			bufIndex += 2;
 			//Writing public key
 			for (var i = 0; i < decodedKeyPair.publicKey.length; i++){
@@ -281,8 +282,8 @@ var hpka = (function(){
 			}
 			bufIndex += decodedKeyPair.publicKey.length;
 			//Writing secret key size
-			encodedB[bufIndex] = libsodium.crypto_sign_secretkeybytes >> 8;
-			encodedB[bufIndex+1] = libsodium.crypto_sign_secretkeybytes;
+			encodedB[bufIndex] = sodium.crypto_sign_secretkeybytes >> 8;
+			encodedB[bufIndex+1] = sodium.crypto_sign_secretkeybytes;
 			bufIndex += 2;
 			//Writing secret key
 			for (var i = 0; i < decodedKeyPair.privateKey.length; i++){
@@ -296,18 +297,18 @@ var hpka = (function(){
 
 	function keyDecode(encodedKeyPair){
 		if (!(encodedKeyPair && (encodedKeyPair instanceof Uint8Array || typeof encodedKeyPair == 'string'))) throw new TypeError('Parameter encoded key pair must either be a Uint8Array or a string');
-		if (typeof encodedKeyPair == 'string' && !libsodium.is_hex(encodedKeyPair)) throw new TypeError('When encodedKeyPair is a string, it must be hex encoded');
+		if (typeof encodedKeyPair == 'string' && !is_hex(encodedKeyPair)) throw new TypeError('When encodedKeyPair is a string, it must be hex encoded');
 
 		var enc;
-		if (typeof encodedKeyPair == 'string') enc = libsodium.from_hex(encodedKeyPair);
+		if (typeof encodedKeyPair == 'string') enc = from_hex(encodedKeyPair);
 		else enc = encodedKeyPair;
 
 		if (enc.length == 0) throw new TypeError('Buffer cannot have length 0');
 		var keyTypeByte = enc[0];
 		if (!(keyTypeByte == 0x05 || keyTypeByte == 0x06)) throw new Error('Unknown keyType');
 
-		var ed25519ExpectedSize = 5 + libsodium.crypto_sign_publickeybytes + libsodium.crypto_sign_secretkeybytes;
-		var c25519ExpectedSize = 5 + libsodium.crypto_box_publickeybytes + libsodium.crypto_box_secretkeybytes;
+		var ed25519ExpectedSize = 5 + sodium.crypto_sign_publickeybytes + sodium.crypto_sign_secretkeybytes;
+		var c25519ExpectedSize = 5 + sodium.crypto_box_publickeybytes + sodium.crypto_box_secretkeybytes;
 		var decodedKeyPair = {};
 
 		var bufIndex = 1;
@@ -318,25 +319,25 @@ var hpka = (function(){
 			//Reading claimed public key size and check validity
 			var advPubKeySize = (enc[bufIndex] << 8) + enc[bufIndex+1];
 			bufIndex += 2;
-			if (advPubKeySize != libsodium.crypto_box_publickeybytes) throw new Error('Corrupted key buffer');
+			if (advPubKeySize != sodium.crypto_box_publickeybytes) throw new Error('Corrupted key buffer');
 			//Reading public key
-			var pubKey = new Uint8Array(libsodium.crypto_box_publickeybytes);
-			for (var i = 0; i < libsodium.crypto_box_publickeybytes; i++){
+			var pubKey = new Uint8Array(sodium.crypto_box_publickeybytes);
+			for (var i = 0; i < sodium.crypto_box_publickeybytes; i++){
 				pubKey[i] = enc[bufIndex+i];
 			}
 			decodedKeyPair.publicKey = pubKey;
-			bufIndex += libsodium.crypto_box_publickeybytes;
+			bufIndex += sodium.crypto_box_publickeybytes;
 			//Reading claimed private key size and check validity
 			var advPrivKeySize = (enc[bufIndex] << 8) + enc[bufIndex+1];
 			bufIndex += 2;
-			if (advPrivKeySize != libsodium.crypto_box_secretkeybytes) throw new Error('Corrupted key buffer');
+			if (advPrivKeySize != sodium.crypto_box_secretkeybytes) throw new Error('Corrupted key buffer');
 			//Reading private key
-			var privKey = new Uint8Array(libsodium.crypto_box_secretkeybytes);
-			for (var i = 0; i < libsodium.crypto_box_secretkeybytes; i++){
+			var privKey = new Uint8Array(sodium.crypto_box_secretkeybytes);
+			for (var i = 0; i < sodium.crypto_box_secretkeybytes; i++){
 				privKey[i] = enc[bufIndex+i];
 			}
 			decodedKeyPair.privateKey = privKey;
-			bufIndex += libsodium.crypto_box_secretkeybytes;
+			bufIndex += sodium.crypto_box_secretkeybytes;
 		} else { //Ed25519
 			//Check that length is respected
 			if (enc.length != ed25519ExpectedSize) throw new TypeError('Invalid size for Ed25519 key buffer');
@@ -344,25 +345,25 @@ var hpka = (function(){
 			//Reading claimed public key size
 			var advPubKeySize = (enc[bufIndex] << 8) + enc[bufIndex+1];
 			bufIndex += 2;
-			if (advPubKeySize != libsodium.crypto_sign_publickeybytes) throw new Error('Corrupted key buffer');
+			if (advPubKeySize != sodium.crypto_sign_publickeybytes) throw new Error('Corrupted key buffer');
 			//Reading public key
-			var pubKey = new Uint8Array(libsodium.crypto_sign_publickeybytes);
-			for (var i = 0; i < libsodium.crypto_sign_publickeybytes; i++){
+			var pubKey = new Uint8Array(sodium.crypto_sign_publickeybytes);
+			for (var i = 0; i < sodium.crypto_sign_publickeybytes; i++){
 				pubKey[i] = enc[bufIndex+i];
 			}
 			decodedKeyPair.publicKey = pubKey;
-			bufIndex += libsodium.crypto_sign_publickeybytes;
+			bufIndex += sodium.crypto_sign_publickeybytes;
 			//Reading claimed private key size and check validity
 			var advPrivKeySize = (enc[bufIndex] << 8) + enc[bufIndex+1];
 			bufIndex += 2;
-			if (advPrivKeySize != libsodium.crypto_sign_secretkeybytes) throw new Error('Corrupted key buffer');
+			if (advPrivKeySize != sodium.crypto_sign_secretkeybytes) throw new Error('Corrupted key buffer');
 			//Reading private key
-			var privKey = new Uint8Array(libsodium.crypto_sign_secretkeybytes);
-			for (var i = 0; i < libsodium.crypto_sign_secretkeybytes; i++){
+			var privKey = new Uint8Array(sodium.crypto_sign_secretkeybytes);
+			for (var i = 0; i < sodium.crypto_sign_secretkeybytes; i++){
 				privKey[i] = enc[bufIndex+i];
 			}
 			decodedKeyPair.privateKey = privKey;
-			bufIndex += libsodium.crypto_sign_secretkeybytes;
+			bufIndex += sodium.crypto_sign_secretkeybytes;
 		}
 
 		return decodedKeyPair;
@@ -388,8 +389,8 @@ var hpka = (function(){
 
 		var r = 8, p = 1, opsLimit = 16384; //Scrypt parameters
 		var saltSize = 8;
-		var nonceSize = libsodium.crypto_secretbox_noncebytes;
-		var totalSize = 16 + saltSize + nonceSize + buffer.length + libsodium.crypto_secretbox_macbytes;
+		var nonceSize = sodium.crypto_secretbox_noncebytes;
+		var totalSize = 16 + saltSize + nonceSize + buffer.length + sodium.crypto_secretbox_macbytes;
 
 		//console.log('r: ' + 8 + '\np: ' + p + '\nopsLimit: ' + opsLimit + '\nsaltSize: ' + saltSize + '\nnonceSize: ' + nonceSize);
 
@@ -419,7 +420,7 @@ var hpka = (function(){
 		b[bIndex+1] = nonceSize;
 		bIndex += 2;
 		//Writing encryptedbuffer size
-		var encContentSize = buffer.length + libsodium.crypto_secretbox_macbytes;
+		var encContentSize = buffer.length + sodium.crypto_secretbox_macbytes;
 		b[bIndex] = (encContentSize >> 24);
 		b[bIndex+1] = (encContentSize >> 16);
 		b[bIndex+2] = (encContentSize >> 8);
@@ -441,11 +442,11 @@ var hpka = (function(){
 		bIndex += nonceSize;
 
 		//Derive password into encryption key
-		var encKeyLength = libsodium.crypto_secretbox_keybytes;
-		var encKey = libsodium.crypto_pwhash_scryptsalsa208sha256_ll(password, salt, opsLimit, r, p, encKeyLength);
+		var encKeyLength = sodium.crypto_secretbox_keybytes;
+		var encKey = sodium.crypto_pwhash_scryptsalsa208sha256_ll(password, salt, opsLimit, r, p, encKeyLength);
 		//console.log('Encryption key: ' + to_hex(encKey));
 		//Encrypt the content and write it
-		var cipher = libsodium.crypto_secretbox_easy(buffer, nonce, encKey);
+		var cipher = sodium.crypto_secretbox_easy(buffer, nonce, encKey);
 		for (var i = 0; i < cipher.length; i++){
 			b[bIndex+i] = cipher[i];
 		}
@@ -501,7 +502,7 @@ var hpka = (function(){
 
 		if (in_avail() < minRemainingSize) throw new RangeError('Invalid encrypted buffer format');
 
-		if (nonceSize != libsodium.crypto_secretbox_noncebytes) throw new RangeError('Invalid nonce size');
+		if (nonceSize != sodium.crypto_secretbox_noncebytes) throw new RangeError('Invalid nonce size');
 
 		//Reading encrypted buffer length
 		for (var i = 3; i >= 0; i--){
@@ -532,8 +533,8 @@ var hpka = (function(){
 		//console.log('Nonce: ' + to_hex(nonce));
 
 		//Deriving password into encryption key
-		var encKeyLength = libsodium.crypto_secretbox_keybytes;
-		var encKey = libsodium.crypto_pwhash_scryptsalsa208sha256_ll(password, salt, opsLimit, r, p, encKeyLength);
+		var encKeyLength = sodium.crypto_secretbox_keybytes;
+		var encKey = sodium.crypto_pwhash_scryptsalsa208sha256_ll(password, salt, opsLimit, r, p, encKeyLength);
 		//console.log('Encryption key: ' + to_hex(encKey));
 
 		var cipherText = new Uint8Array(encBufferSize );
@@ -545,7 +546,7 @@ var hpka = (function(){
 
 		//Decrypting the ciphertext
 		//console.log('Ciphertext: ' + to_hex(cipherText));
-		var plainText = libsodium.crypto_secretbox_open_easy(cipherText, nonce, encKey);
+		var plainText = sodium.crypto_secretbox_open_easy(cipherText, nonce, encKey);
 		//console.log('Key plain text:' + to_hex(plainText));
 		return plainText; //If returned result is undefined, then invalid password (or corrupted buffer)
 
@@ -627,15 +628,15 @@ var hpka = (function(){
 			decodedKeyPair.privateKey = keyPair.privateKey;
 		} else throw new TypeError('Forbidden type for private key');
 
-		if (decodedKeyPair.publicKey.length != libsodium.crypto_sign_publickeybytes) throw new TypeError('Invalid public key size');
-		if (decodedKeyPair.privateKey.length != libsodium.crypto_sign_secretkeybytes) throw new TypeError('Invalid private key size');
+		if (decodedKeyPair.publicKey.length != sodium.crypto_sign_publickeybytes) throw new TypeError('Invalid public key size');
+		if (decodedKeyPair.privateKey.length != sodium.crypto_sign_secretkeybytes) throw new TypeError('Invalid private key size');
 
-		var usernameBuffer = libsodium.encode_utf8(username);
+		var usernameBuffer = sodium.encode_utf8(username);
 		if (usernameBuffer.length > 255) throw new TypeError('Username cannot be more than 255 bytes long');
 
 		var hpkaReqBuffer = buildPayloadWithoutSignature(decodedKeyPair, usernameBuffer, userAction);
 
-		var hostAndPathBuf = libsodium.encode_utf8(hostAndPath);
+		var hostAndPathBuf = sodium.encode_utf8(hostAndPath);
 		var hostAndPathLength = hostAndPathBuf.length;
 		var signedBlobLength = hpkaReqBuffer.length + hostAndPathLength + 1; //The 1 is for the HTTP verbId
 		var signedBlob = new Uint8Array(signedBlobLength);
@@ -649,7 +650,7 @@ var hpka = (function(){
 		}
 
 		//Sign and return HPKA headers
-		var hpkaSignature = libsodium.crypto_sign_detached(signedBlob, decodedKeyPair.privateKey);
+		var hpkaSignature = sodium.crypto_sign_detached(signedBlob, decodedKeyPair.privateKey);
 		return {'req': to_base64(hpkaReqBuffer, true), 'sig': to_base64(hpkaSignature, true)};
 	}
 
@@ -663,7 +664,7 @@ var hpka = (function(){
 		bufferLength += 1; //KeyType
 
 		bufferLength += 2; //Public key length field
-		bufferLength += libsodium.crypto_sign_publickeybytes;
+		bufferLength += sodium.crypto_sign_publickeybytes;
 
 		var buffer = new Uint8Array(bufferLength);
 		var offset = 0;
@@ -691,8 +692,8 @@ var hpka = (function(){
 		buffer[offset] = 0x08;
 		offset++;
 		//Writing the public key length
-		buffer[offset] = libsodium.crypto_sign_publickeybytes >> 8;
-		buffer[offset+1] = libsodium.crypto_sign_publickeybytes;
+		buffer[offset] = sodium.crypto_sign_publickeybytes >> 8;
+		buffer[offset+1] = sodium.crypto_sign_publickeybytes;
 		offset += 2;
 		//Writing the public key
 		for (var i = 0; i < keyPair.publicKey.length; i++){
