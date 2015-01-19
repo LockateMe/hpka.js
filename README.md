@@ -9,13 +9,13 @@ __NOTE:__ For Ed25519 signatures only!
 This library is dependent on [libsodium](https://github.com/jedisct1/libsodium). You need to include a [wrapped and emscripten](https://github.com/jedisct1/libsodium.js) compiled version of it.
 
 Prerequisites:
-* autotools (necessary to compile libsodium)
+* GNU Build System (that contains `automake` and `libtool`, necessary to compile libsodium)
 * emscripten (necessary to compile libsodium to javascript)
-* nodejs (necessary to build the dynamic wrapper for the js build and run tests)
+* nodejs or io.js (necessary to build the dynamic wrapper for the js build and run tests)
 
 Here's how you should do it:
 
-Once you've got the cloned this repo, run
+Once you've got the cloned this repo and installed the dependencies, run
 ```shell
 make
 ```
@@ -73,10 +73,12 @@ Here are the list of attributes taken in the `reqOptions` object:
 
 An automated testing page was written (`test/test.html`). To launch the tests :
 
-* Go to the `test` directory
-* Run `npm install` to install the server's dependencies
-* Add the libsodium files, as you would normally do. (As described in the setup paragraph above)
-* Run `node server.js`, then head your browser to `http://localhost:2500/test.html`, then click on the "Test" button
+* From the repo's root folder, run:
+```shell
+make test
+```
+This will built the test server's dependencies (if not been previously built) and then launch it. Make sure that the dependencies listed above are installed on your computer.
+* Head your browser to `http://localhost:2500/test.html`, then click on the "Test" button
 
 ## License
 
