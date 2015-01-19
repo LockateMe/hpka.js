@@ -25,7 +25,7 @@
 
 		</div>
 		<script src="libsodium.js"></script>
-		<script src="libsodium-wrap.js"></script>
+		<script src="sodium.js"></script>
 		<script src="hpka.js"></script>
 		<script>
 			var reqOptions = {
@@ -307,8 +307,8 @@
 
 				var keyBuffer = hpka.createIdentityKey();
 				var key = hpka.loadKey(keyBuffer);
-				var pubHex = libsodium.to_hex(key.publicKey);
-				var privHex = libsodium.to_hex(key.privateKey);
+				var pubHex = sodium.to_hex(key.publicKey);
+				var privHex = sodium.to_hex(key.privateKey);
 				log('<br>Generated key:<br>Public key: ' + pubHex + '<br>Private key: ' + privHex + '<br>');
 				var password = 'password';
 				var currentKeyBuffer = new Uint8Array(keyBuffer.length);
@@ -326,8 +326,8 @@
 				log('<br>');
 
 				currentKey = hpka.loadKey(currentKeyBuffer, password);
-				var endPubHex = libsodium.to_hex(currentKey.publicKey);
-				var endPrivHex = libsodium.to_hex(currentKey.privateKey);
+				var endPubHex = sodium.to_hex(currentKey.publicKey);
+				var endPrivHex = sodium.to_hex(currentKey.privateKey);
 				log('<br>Final key:<br>Public key: ' + endPubHex + '<br>Private key: ' + endPrivHex + '<br>');
 
 				var keysIdentical = pubHex == endPubHex && privHex == endPrivHex;

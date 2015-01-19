@@ -1,6 +1,7 @@
 */.DS_Store
 test/node_modules/
-test/libsodium/
 test/libsodium.js*
-test/libsodium-wrap.js
+test/sodium.js
 test/hpka.js
+test/server_built
+out/
