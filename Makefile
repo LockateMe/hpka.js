@@ -23,6 +23,11 @@ test/server_built:
 	cd test && npm install
 	touch test/server_built
 
+rewrap: libsodium-js/out/sodium.js
+	cd libsodium-js && make rewrap
+	cp libsodium-js/out/* out/
+	cp out/* test
+
 clean:
 	-rm -r out
 	cd libsodium-js && make distclean
