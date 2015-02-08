@@ -297,9 +297,12 @@ var hpka = (function(){
 		return encodedB;
 	}
 
-	function keyDecode(encodedKeyPair){
+	function keyDecode(encodedKeyPair, resultEncoding){
 		if (!(encodedKeyPair && (encodedKeyPair instanceof Uint8Array || typeof encodedKeyPair == 'string'))) throw new TypeError('Parameter encoded key pair must either be a Uint8Array or a string');
 		if (typeof encodedKeyPair == 'string' && !is_hex(encodedKeyPair)) throw new TypeError('When encodedKeyPair is a string, it must be hex encoded');
+
+		if (resultEncoding && typeof resultEncoding != 'string') throw new TypeError('when defined, resultEncoding must be a string');
+		if (resultEncoding && !(resultEncoding == 'hex' || resultEncoding == 'base64')) throw new Error('when defined, resultEncoding must either be "hex" or "base64"');
 
 		var enc;
 		if (typeof encodedKeyPair == 'string') enc = from_hex(encodedKeyPair);
@@ -366,6 +369,14 @@ var hpka = (function(){
 			}
 			decodedKeyPair.privateKey = privKey;
 			bufIndex += sodium.crypto_sign_SECRETKEYBYTES;
+		}
+
+		if (resultEncoding == 'hex'){
+			decodedKeyPair.publicKey = to_hex(decodedKeyPair.publicKey);
+			decodedKeyPair.privateKey = to_hex(decodedKeyPair.privateKey);
+		} else if (resultEncoding == 'base64'){
+			decodedKeyPair.publicKey = to_base64(decodedKeyPair.publicKey);
+			decodedKeyPair.privateKey = to_base64(decodedKeyPair.privateKey);
 		}
 
 		return decodedKeyPair;
@@ -556,7 +567,7 @@ var hpka = (function(){
 
 	}
 
-	function loadKey(keyBuffer, password){
+	function loadKey(keyBuffer, password, resultEncoding){
 		if (!((typeof keyBuffer == 'string' && is_hex(keyBuffer)) || keyBuffer instanceof Uint8Array)) throw new TypeError('keyBuffer must either be a hex-string or a buffer');
 		if (password && !(typeof password == 'string' || password instanceof Uint8Array)) throw new TypeError('password must either be a string or a buffer');
 
@@ -572,9 +583,9 @@ var hpka = (function(){
 				throw new Error('Invalid password or corrupted buffer!');
 			}
 			//console.log('Decrypted encoded key pair: ' + to_hex(decryptedKeyBuffer));
-			return keyDecode(decryptedKeyBuffer);
+			return keyDecode(decryptedKeyBuffer, resultEncoding);
 		} else {
-			return keyDecode(b);
+			return keyDecode(b, resultEncoding);
 		}
 	}
 

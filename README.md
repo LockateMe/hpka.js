@@ -37,7 +37,7 @@ The library loads in a variable called `hpka`. It exposes the following methods:
 	* Buffer|String cipher : The data to be decrypted. If the provided data is a string, it must be hex encoded.
 	* Buffer|String password : The password that was used on encryption
 	* returns the plaintext (as Uint8Array)
-* `hpka.loadKey(Buffer|String keyBuffer, [Buffer|String password])`
+* `hpka.loadKey(Buffer|String keyBuffer, [Buffer|String password], [String resultEncoding])` : Returns an `{keyType, publicKey, privateKey}` object, where the keys are either Uint8Arrays or strings encoded in `resultEncoding`
 * `hpka.saveKey(Object keyPair, [String|Buffer password])`
 * `hpka.buildPayload(Object keyPair, String username, Number userAction, String httpMethod, String hostAndPath)`
 * `hpka.Client(String username, Buffer keyBuffer, [Buffer|String password])` : Constructor method for an easy to use HPKA client  
