@@ -10,13 +10,15 @@ var hpka = (function(){
 	//if (!libsodium) throw new Error('libsodium is missing!');
 	if (!sodium) throw new Error('The libsodium wrapper (sodium.js) is missing')
 
-	var is_hex = sodium.is_hex;
+	var is_hex = function(s){
+		return typeof s == 'string' && s.length % 2 == 0 && /^([a-f]|[0-9])+$/i.test(s)
+	}
 	var from_hex = sodium.from_hex;
 	var to_hex = sodium.to_hex;
 	var from_base64 = sodium.from_base64;
 	var to_base64 = sodium.to_base64;
-	var buffer_to_string = sodium.uint8Array_to_String;
-	var string_to_buffer = sodium.string_to_Uint8Array;
+	var buffer_to_string = sodium.uint8Array_to_String || sodium.to_string;
+	var string_to_buffer = sodium.string_to_Uint8Array || sodium.from_string;
 
 	function supportedAlgorithms(){return ['ed25519'];}
 
@@ -375,8 +377,8 @@ var hpka = (function(){
 			decodedKeyPair.publicKey = to_hex(decodedKeyPair.publicKey);
 			decodedKeyPair.privateKey = to_hex(decodedKeyPair.privateKey);
 		} else if (resultEncoding == 'base64'){
-			decodedKeyPair.publicKey = to_base64(decodedKeyPair.publicKey);
-			decodedKeyPair.privateKey = to_base64(decodedKeyPair.privateKey);
+			decodedKeyPair.publicKey = to_base64(decodedKeyPair.publicKey, true);
+			decodedKeyPair.privateKey = to_base64(decodedKeyPair.privateKey, true);
 		}
 
 		return decodedKeyPair;
