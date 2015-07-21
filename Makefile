@@ -4,7 +4,7 @@ all: out/sodium.js out/hpka.js
 	cp hpka.js test/
 
 compile:
-	cd libsodium-js && make
+	cd libsodium-js && make distclean && make
 	-rm -r out/
 	make all
 
@@ -36,7 +36,7 @@ rewrap: libsodium-js/out/sodium.js
 
 clean:
 	-rm -r out
-	cd libsodium-js && make distclean
+#	cd libsodium-js && make distclean
 
 clean-test:
 	-rm -rf test/node_modules
