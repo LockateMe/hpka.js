@@ -3,13 +3,19 @@ all: out/sodium.js out/hpka.js
 	cp hpka.js out/
 	cp hpka.js test/
 
-out/sodium.js: libsodium-js/out/sodium.js
+compile:
+	cd libsodium-js && make
+	-rm -r out/
+	make all
+
+out/sodium.js: #libsodium-js/out/sodium.js
+	cd libsodium-js && node test/test.js && cd ..
 	mkdir -p out/
-	cd libsodium-js && cp -r out/* ../out
+	cd libsodium-js && cp -r dist/browsers/combined/* ../out
 	cp hpka.js out/hpka.js
 
-libsodium-js/out/sodium.js: libsodium-js/Makefile
-	cd libsodium-js && make
+#libsodium-js/out/sodium.js: libsodium-js/Makefile
+#	cd libsodium-js && node test/test.js
 
 libsodium-js/Makefile:
 	git submodule update --init --recursive
