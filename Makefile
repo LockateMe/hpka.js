@@ -8,7 +8,7 @@ compile:
 	-rm -r out/
 	make all
 
-out/sodium.js: #libsodium-js/out/sodium.js
+out/sodium.js: libsodium-js/Makefile
 	cd libsodium-js && node test/test.js && cd ..
 	mkdir -p out/
 	cd libsodium-js && cp -r dist/browsers/combined/* ../out
