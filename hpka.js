@@ -391,8 +391,8 @@ var hpka = (function(){
 
 	function isKeyPair(kp){
 		if (typeof kp != 'object') return false;
-		if (!(kp.keyType. && kp.privateKey && kp.publicKey)) return false;
-		if (kp.keyType == 'ed25519') return false;
+		if (!(kp.keyType && kp.privateKey && kp.publicKey)) return false;
+		if (kp.keyType != 'ed25519') return false;
 		if (!(kp.publicKey instanceof Uint8Array && !isNullBuffer(kp.publicKey) && kp.publicKey.length == sodium.crypto_sign_PUBLICKEYBYTES)) return false;
 		if (!(kp.privateKey instanceof Uint8Array && !isNullBuffer(kp.privateKey) && kp.privateKey.length == sodium.crypto_sign_SECRETKEYBYTES)) return false;
 		return true;
