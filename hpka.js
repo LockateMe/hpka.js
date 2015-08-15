@@ -53,13 +53,18 @@ var hpka = (function(){
 
 	function client(username, keyBuffer, password){
 		if (typeof username != 'string') throw new TypeError('username must be a string');
-		if (!(keyBuffer && keyBuffer instanceof Uint8Array)) throw new TypeError('keyBuffer must be a Uint8Array');
+		if (!(keyBuffer && (keyBuffer instanceof Uint8Array || typeof keyBuffer == 'object'))) throw new TypeError('keyBuffer must be a Uint8Array');
 		if (password && !(typeof password == 'string' || password instanceof Uint8Array)) throw new TypeError('passowrd must be a Uint8Array');
 
 		var httpAgent = defaultAgent;
 		var _username, _password, _keyPair, _keyTtl, _keyClearTimeout;
 		_username = username;
-		_keyPair = loadKey(keyBuffer, password);
+		if (keyBuffer instanceof Uint8Array){ //KeyBuffer to be decoded
+			_keyPair = loadKey(keyBuffer, password);
+		} else { //Standard keyPair object
+			if (!isKeyPair(keyBuffer)) throw new TypeError('invalid keyBuffer/keyPair parameter');
+			_keyPair = keyBuffer;
+		}
 
 		this.request = function(reqOptions, callback){
 			doHpkaReq(0x00, reqOptions, callback);
@@ -382,6 +387,15 @@ var hpka = (function(){
 		}
 
 		return decodedKeyPair;
+	}
+
+	function isKeyPair(kp){
+		if (typeof kp != 'object') return false;
+		if (!(kp.keyType. && kp.privateKey && kp.publicKey)) return false;
+		if (kp.keyType == 'ed25519') return false;
+		if (!(kp.publicKey instanceof Uint8Array && !isNullBuffer(kp.publicKey) && kp.publicKey.length == sodium.crypto_sign_PUBLICKEYBYTES)) return false;
+		if (!(kp.privateKey instanceof Uint8Array && !isNullBuffer(kp.privateKey) && kp.privateKey.length == sodium.crypto_sign_SECRETKEYBYTES)) return false;
+		return true;
 	}
 
 	/* Encrypted buffer format. Numbers are in big endian
@@ -723,6 +737,12 @@ var hpka = (function(){
 		var b = new Uint8Array(size);
 		window.crypto.getRandomValues(b);
 		return b;
+	}
+
+	function isNullBuffer(b){
+		if (!(b instanceof Uint8Array)) throw new TypeError('b must be an Uint8Array');
+		for (var i = 0; i < b.length; i++) if (b[i] != 0) return false;
+		return true;
 	}
 
 	lib.supportedAlgorithms = supportedAlgorithms;

@@ -42,7 +42,7 @@ The library loads in a variable called `hpka`. It exposes the following methods:
 * `hpka.buildPayload(Object keyPair, String username, Number userAction, String httpMethod, String hostAndPath)`
 * `hpka.Client(String username, Buffer keyBuffer, [Buffer|String password])` : Constructor method for an easy to use HPKA client  
 	* String username : the username to be used for the account
-	* Buffer keyBuffer : the buffer containing the encoded keypair to be used with this client
+	* Buffer keyBuffer : the buffer containing the encoded keypair to be used with this client. KeyBuffer can also be a KeyPair object (resulting form a `hpka.loadKey` call)
 	* [Buffer|String password] : Optional. The password to be used to decrypt the keyBuffer. To be used only if the keyBuffer you provided is encrypted  
 	#### Instance methods
 	__NOTE: __ The `reqOptions` parameter in the `request`, `registerAccount` and `deleteAccount` methods is an object that contains all the parameters needed to make a request. See below for the list of supported attributes and values
