@@ -607,7 +607,7 @@ var hpka = (function(){
 
 	function saveKey(keyPair, password){
 		if (typeof keyPair != 'object') throw new TypeError('keyPair must be an object');
-		if (!(typeof password == 'string' || password instanceof Uint8Array)) throw new TypeError('password must either be a string or a Uint8Array buffer');
+		if (password && !(typeof password == 'string' || password instanceof Uint8Array)) throw new TypeError('password must either be a string or a Uint8Array buffer');
 		var decodedKeyPair = {};
 
 		decodedKeyPair.keyType = keyPair.keyType;
