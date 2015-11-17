@@ -7,8 +7,7 @@
 var hpka = (function(){
 	var lib = {};
 
-	//if (!libsodium) throw new Error('libsodium is missing!');
-	if (!sodium) throw new Error('The libsodium wrapper (sodium.js) is missing')
+	if (!sodium) throw new Error('libsodium is missing')
 
 	var is_hex = function(s){
 		return typeof s == 'string' && s.length % 2 == 0 && /^([a-f]|[0-9])+$/i.test(s)
@@ -51,16 +50,31 @@ var hpka = (function(){
 		else return undefined;
 	}
 
-	function client(username, keyBuffer, password){
+	function client(username, keyBuffer, password, sigProvider, scProvider, loadCallback){
 		if (typeof username != 'string') throw new TypeError('username must be a string');
 		if (!(keyBuffer && (keyBuffer instanceof Uint8Array || typeof keyBuffer == 'object'))) throw new TypeError('keyBuffer must be a Uint8Array');
 		if (password && !(typeof password == 'string' || password instanceof Uint8Array)) throw new TypeError('passowrd must be a Uint8Array');
+
+		if (sigProvider && typeof sigProvider != 'function') throw new TypeError('when provided, sigProvider must be a function');
+		if (scProvider && typeof scProvider != 'function') throw new TypeError('when provided, scProvider must be a function');
+		if (loadCallback && typeof loadCallback != 'function') throw new TypeError('when provided, loadCallback must be a function');
+
+		var signatureProvider = sigProvider || defaultSignatureProvider, scryptProvider = scProvider || defaultScryptProvider;
 
 		var httpAgent = defaultAgent;
 		var _username, _password, _keyPair, _keyTtl, _keyClearTimeout;
 		_username = username;
 		if (keyBuffer instanceof Uint8Array){ //KeyBuffer to be decoded
-			_keyPair = loadKey(keyBuffer, password);
+			//Double assignation of _keyPair to fit both sync and async cases
+			_keyPair = loadKey(keyBuffer, password, undefined, scryptProvider, function(err, _kp){
+				if (err){
+					if (loadCallback){
+						loadCallback(err);
+						return;
+					} else throw err;
+				}
+				_keyPair = _kp;
+			});
 		} else { //Standard keyPair object
 			if (!isKeyPair(keyBuffer)) throw new TypeError('invalid keyBuffer/keyPair parameter');
 			_keyPair = keyBuffer;
@@ -83,14 +97,26 @@ var hpka = (function(){
 			httpAgent = agent;
 		};
 
+		this.setSignatureProvider = function(sigProvider){
+			if (typeof sigProvider != 'function') throw new TypeError('sigProvider must be a function');
+			signatureProvider = sigProvider;
+		};
+
+		this.setScryptProvider = function(scProvider){
+			if (typeof scProvider != 'function') throw new TypeError('scProvider must be a function');
+			scryptProvider = scProvider;
+		};
+
 		this.setKeyTtl = function(ttl){
 			if (!(typeof ttl == 'number' && ttl > 0 && Math.floor(ttl) == ttl)) throw new TypeError('ttl must be a strictly positive integer');
 			_keyTtl = ttl;
 			_keyClearTimeout = setTimeout(ttlEndHandler, _keyTtl);
 		};
 
-		this.resetKeyTtl = function(){
+		this.resetKeyTtl = function(ttl){
 			if (!(_keyClearTimeout && _keyTtl)) return;
+			if (ttl && !(typeof ttl == 'number' && ttl > 0 && Math.floor(ttl) == ttl)) throw new TypeError('when defined, ttl must be a strictly positive integer');
+			_keyTtl = _keyTtl || ttl;
 			clearTimeout(_keyClearTimeout);
 			_keyClearTimeout = setTimeout(ttlEndHandler, _keyTtl);
 		};
@@ -105,8 +131,20 @@ var hpka = (function(){
 			return !!_keyClearTimeout;
 		};
 
-		this.loadKey = function(keyBuffer, password){
-			_keyPair = loadKey(keyBuffer, password);
+		this.loadKey = function(keyBuffer, password, cb){
+			if (cb && typeof cb != 'function') throw new TypeError('when defined, cb must be a function');
+			if (cb){ //If a callback is provided, then load the key asynchronously using the scryptProvider
+				loadKey(keyBuffer, password, undefined, scryptProvider, function(err, _kp){
+					if (err){
+						cb(err);
+						return;
+					}
+					_keyPair = _kp;
+					cb();
+				});
+			} else { //Else, load synchronously using the default sodium.crypto_pwhash_scryptsalsa208sha256_ll function
+				_keyPair = loadKey(keyBuffer, password);
+			}
 		};
 
 		this.keyLoaded = function(){
@@ -132,11 +170,17 @@ var hpka = (function(){
 			if (typeof callback != 'function') throw new TypeError('callback must be a function');
 			validateReqOptions(reqOptions);
 
-			var hpkaPayload = hpka.buildPayload(_keyPair, _username, actionCode, reqOptions.method, hostAndPath(reqOptions));
-			if (!reqOptions.headers) reqOptions.headers = {};
-			reqOptions.headers['HPKA-Req'] = hpkaPayload.req;
-			reqOptions.headers['HPKA-Signature'] = hpkaPayload.sig;
-			httpAgent(reqOptions, callback);
+			hpka.buildPayload(_keyPair, _username, actionCode, reqOptions.method, hostAndPath(reqOptions), signatureProvider, function(err, hpkaPayload){
+				if (err){
+					callback(err);
+					return;
+				}
+
+				if (!reqOptions.headers) reqOptions.headers = {};
+				reqOptions.headers['HPKA-Req'] = hpkaPayload.req;
+				reqOptions.headers['HPKA-Signature'] = hpkaPayload.sig;
+				httpAgent(reqOptions, callback);
+			});
 		}
 	}
 
@@ -200,27 +244,49 @@ var hpka = (function(){
 		if (reqOptions.body && !(typeof reqOptions.body == 'object' || typeof reqOptions.body == 'string')) throw new TypeError('when defined, reqOptions.body must either an object or a string');
 	}
 
-	function createKey(password){
+	function createKey(password, callback){
 		if (password && !(password instanceof Uint8Array || typeof password == 'string')) throw new TypeError('When defined, password must either be a string or a Uint8Array');
+		if (callback && typeof callback != 'function') throw new TypeError('when defined, callback must be a function');
 		var ed25519Seed = randomBuffer(sodium.crypto_sign_SEEDBYTES);
 		var ed25519KeyPair = sodium.crypto_sign_seed_keypair(ed25519Seed);
 
-		if (password){
-			var keyBuffer = keyEncode(ed25519KeyPair, 'ed25519');
-			var encryptedKeyBuffer = scryptEncrypt(keyBuffer, password);
-			var finalBuf = new Uint8Array(encryptedKeyBuffer.length + 1); //Adding one byte at the beginng, for keyType
-			finalBuf[0] = 0x06;
-			for (var i = 0; i < encryptedKeyBuffer.length; i++){
-				finalBuf[i+1] = encryptedKeyBuffer[i];
+		var keyBuffer = keyEncode(ed25519KeyPair, 'ed25519');
+
+		if (callback){
+			if (!password){
+				callback(null, keyBuffer);
+				return;
 			}
-			return finalBuf;
-			//throw new Error('Key generation with password not implemented yet');
-		} else return keyEncode(ed25519KeyPair, 'ed25519');
+
+			scryptEncrypt(keyBuffer, password, defaultScryptProvider, function(err, _encryptedKeyBuffer){
+				if (err){
+					callback(err);
+					return;
+				}
+				var finalBuf = new Uint8Array(_encryptedKeyBuffer.length + 1);
+				finalBuf[0] = 0x06;
+				for (var i = 0; i < _encryptedKeyBuffer.length; i++){
+					finalBuf[i+1] = _encryptedKeyBuffer[i];
+				}
+				callback(null, finalBuf);
+			});
+		} else {
+			if (password){
+				var encryptedKeyBuffer = scryptEncrypt(keyBuffer, password);
+				var finalBuf = new Uint8Array(encryptedKeyBuffer.length + 1); //Adding one byte at the beginng, for keyType
+				finalBuf[0] = 0x06;
+				for (var i = 0; i < encryptedKeyBuffer.length; i++){
+					finalBuf[i+1] = encryptedKeyBuffer[i];
+				}
+				return finalBuf;
+				//throw new Error('Key generation with password not implemented yet');
+			} else return keyBuffer;
+		}
 	}
 
-	function changeKeyPassword(keyBuffer, currentPassword, newPassword){
+	/*function changeKeyPassword(keyBuffer, currentPassword, newPassword){
 
-	}
+	}*/
 
 	function keyEncode(keyPair, keyType){
 		if (typeof keyPair != 'object') throw new TypeError('keyPair must be an object');
@@ -410,10 +476,13 @@ var hpka = (function(){
     * x bytes : encrypted data buffer (with MAC appended to it)
     */
 
-	function scryptEncrypt(buffer, password){
+	function scryptEncrypt(buffer, password, scryptProvider, callback){
 		if (!(buffer && buffer instanceof Uint8Array)) throw new TypeError('Buffer must be a Uint8Array');
 		if (!(typeof password == 'string' || password instanceof Uint8Array)) throw new TypeError('Password must be a string or a Uint8Array buffer');
-
+		if (scryptProvider){
+			if (typeof scryptProvider != 'function') throw new TypeError('when defined, scryptProvider must be a function');
+			if (typeof callback != 'function') throw new TypeError('when scryptProvider is defined, callback must be defined and must be a function');
+		}
 		//console.log('Key plain text: ' + to_hex(buffer));
 
 		var r = 8, p = 1, opsLimit = 16384; //Scrypt parameters
@@ -472,24 +541,49 @@ var hpka = (function(){
 
 		//Derive password into encryption key
 		var encKeyLength = sodium.crypto_secretbox_KEYBYTES;
-		var encKey = sodium.crypto_pwhash_scryptsalsa208sha256_ll(password, salt, opsLimit, r, p, encKeyLength);
-		//console.log('Encryption key: ' + to_hex(encKey));
-		//Encrypt the content and write it
-		var cipher = sodium.crypto_secretbox_easy(buffer, nonce, encKey);
-		for (var i = 0; i < cipher.length; i++){
-			b[bIndex+i] = cipher[i];
+		var encKey;
+		if (scryptProvider){
+			scryptProvider([password, salt, opsLimit, r, p, encKeyLength], function(err, _encKey){
+				if (err){
+					callback(err);
+					return;
+				}
+				encKey = _encKey;
+				endEncryption();
+			});
+		} else {
+			encKey = sodium.crypto_pwhash_scryptsalsa208sha256_ll(password, salt, opsLimit, r, p, encKeyLength);
+			return endEncryption();
 		}
-		bIndex += cipher.length;
-		//console.log('Ciphertext: ' + to_hex(cipher));
-		return b;
+		//console.log('Encryption key: ' + to_hex(encKey));
+
+		function endEncryption(){
+			//Encrypt the content and write it
+			var cipher = sodium.crypto_secretbox_easy(buffer, nonce, encKey);
+			for (var i = 0; i < cipher.length; i++){
+				b[bIndex+i] = cipher[i];
+			}
+			bIndex += cipher.length;
+			//console.log('Ciphertext: ' + to_hex(cipher));
+			if (scryptProvider) callback(null, b);
+			else return b;
+		}
 	}
 
-	function scryptDecrypt(buffer, password){
+	function scryptDecrypt(buffer, password, scryptProvider, callback){
 		if (!(buffer && buffer instanceof Uint8Array)) throw new TypeError('Buffer must be a Uint8Array');
 		if (!(typeof password == 'string' || passowrd instanceof Uint8Array)) throw new TypeError('password must be a string or a Uint8Array buffer');
+		if (scryptProvider){
+			if (typeof scryptProvider != 'function') throw new TypeError('when defined, scryptProvider must be a function');
+			if (typeof callback != 'function') throw new TypeError('when scryptProvider is defined, callback must be defined and must be a function');
+		}
+
 		var minRemainingSize = 16; //16 bytes from the above format description
 
-		if (in_avail() < minRemainingSize) throw new RangeError('Invalid encrypted buffer format');
+		if (in_avail() < minRemainingSize){
+			handleErr(new RangeError('Invalid encrypted buffer format'));
+			return;
+		}
 
 		var r = 0, p = 0, opsLimit = 0, saltSize = 0, nonceSize = 0, encBufferSize = 0;
 		var opsLimitBeforeException = 4194304;
@@ -513,8 +607,10 @@ var hpka = (function(){
 		}
 		minRemainingSize -= 4;
 
-		if (opsLimit > opsLimitBeforeException) throw new RangeError('opsLimit over the authorized limit of ' + opsLimitBeforeException + ' (limited for performance issues)');
-
+		if (opsLimit > opsLimitBeforeException){
+			handleErr(new RangeError('opsLimit over the authorized limit of ' + opsLimitBeforeException + ' (limited for performance issues)'));
+			return;
+		}
 		//Reading salt size
 		saltSize = (buffer[rIndex] << 8) + buffer[rIndex+1];
 		rIndex += 2;
@@ -529,9 +625,14 @@ var hpka = (function(){
 
 		//console.log('r: ' + 8 + '\np: ' + p + '\nopsLimit: ' + opsLimit + '\nsaltSize: ' + saltSize + '\nnonceSize: ' + nonceSize);
 
-		if (in_avail() < minRemainingSize) throw new RangeError('Invalid encrypted buffer format');
-
-		if (nonceSize != sodium.crypto_secretbox_NONCEBYTES) throw new RangeError('Invalid nonce size');
+		if (in_avail() < minRemainingSize){
+			handleErr(new RangeError('Invalid encrypted buffer format'));
+			return;
+		}
+		if (nonceSize != sodium.crypto_secretbox_NONCEBYTES){
+			handleErr(new RangeError('Invalid nonce size'));
+			return;
+		}
 
 		//Reading encrypted buffer length
 		for (var i = 3; i >= 0; i--){
@@ -541,7 +642,10 @@ var hpka = (function(){
 		minRemainingSize -= 4;
 		minRemainingSize += encBufferSize;
 
-		if (in_avail() < minRemainingSize) throw new RangeError('Invalid encrypted buffer format');
+		if (in_avail() < minRemainingSize){
+			handleErr(new RangeError('Invalid encrypted buffer format'));
+			return;
+		}
 
 		//Reading salt
 		var salt = new Uint8Array(saltSize);
@@ -563,29 +667,54 @@ var hpka = (function(){
 
 		//Deriving password into encryption key
 		var encKeyLength = sodium.crypto_secretbox_KEYBYTES;
-		var encKey = sodium.crypto_pwhash_scryptsalsa208sha256_ll(password, salt, opsLimit, r, p, encKeyLength);
-		//console.log('Encryption key: ' + to_hex(encKey));
-
-		var cipherText = new Uint8Array(encBufferSize );
-		for (var i = 0; i < encBufferSize; i++){
-			cipherText[i] = buffer[rIndex+i];
+		var encKey;
+		if (scryptProvider){
+			scryptProvider([password, salt, opsLimit, r, p, encKeyLength], function(err, _encKey){
+				if (err){
+					callback(err);
+					return;
+				}
+				encKey = _encKey;
+				endDecryption();
+			});
+		} else {
+			encKey = sodium.crypto_pwhash_scryptsalsa208sha256_ll(password, salt, opsLimit, r, p, encKeyLength);
+			return endDecryption();
 		}
-		rIndex += encBufferSize;
-		minRemainingSize -= encBufferSize;
 
-		//Decrypting the ciphertext
-		//console.log('Ciphertext: ' + to_hex(cipherText));
-		var plainText = sodium.crypto_secretbox_open_easy(cipherText, nonce, encKey);
-		//console.log('Key plain text:' + to_hex(plainText));
-		return plainText; //If returned result is undefined, then invalid password (or corrupted buffer)
+		function endDecryption(){
+			//console.log('Encryption key: ' + to_hex(encKey));
+
+			var cipherText = new Uint8Array(encBufferSize);
+			for (var i = 0; i < encBufferSize; i++){
+				cipherText[i] = buffer[rIndex+i];
+			}
+			rIndex += encBufferSize;
+			minRemainingSize -= encBufferSize;
+
+			//Decrypting the ciphertext
+			var plainText = sodium.crypto_secretbox_open_easy(cipherText, nonce, encKey);
+
+			if (scryptProvider) callback(null, plainText);
+			else return plainText; //If returned result is undefined, then invalid password (or corrupted buffer)
+		}
 
 		function in_avail(){return buffer.length - rIndex;}
 
+		function handleErr(e){
+			if (scryptProvider && callback) callback(e);
+			else throw e;
+		}
 	}
 
-	function loadKey(keyBuffer, password, resultEncoding){
+	function loadKey(keyBuffer, password, resultEncoding, scryptProvider, callback){
 		if (!((typeof keyBuffer == 'string' && is_hex(keyBuffer)) || keyBuffer instanceof Uint8Array)) throw new TypeError('keyBuffer must either be a hex-string or a buffer');
 		if (password && !(typeof password == 'string' || password instanceof Uint8Array)) throw new TypeError('password must either be a string or a buffer');
+
+		if (scryptProvider){
+			if (typeof scryptProvider != 'function') throw new TypeError('when defined, scryptProvider must be a function');
+			if (typeof callback != 'function') throw new TypeError('when scryptProvider is defined, callback must be defined and must be a function');
+		}
 
 		var b = (keyBuffer instanceof Uint8Array ? keyBuffer : from_hex(keyBuffer));
 		if (password){
@@ -594,20 +723,41 @@ var hpka = (function(){
 			for (var i = 1; i < b.length; i++){
 				encryptedKeyBuffer[i-1] = b[i];
 			}
-			var decryptedKeyBuffer = scryptDecrypt(encryptedKeyBuffer, password);
-			if (!decryptedKeyBuffer){
-				throw new Error('Invalid password or corrupted buffer!');
+
+			if (scryptProvider){
+				scryptDecrypt(encryptedKeyBuffer, password, scryptProvider, function(err, _decryptedKeyBuffer){
+					if (err){
+						callback(err);
+						return;
+					}
+					if (!_decryptedKeyBuffer){
+						callback(new Error('Invalid password or corrupted buffer!'));
+						return;
+					}
+					callback(null, keyDecode(_decryptedKeyBuffer, resultEncoding));
+				});
+			} else {
+				var decryptedKeyBuffer = scryptDecrypt(encryptedKeyBuffer, password);
+				if (!decryptedKeyBuffer){
+					throw new Error('Invalid password or corrupted buffer!');
+				}
+				//console.log('Decrypted encoded key pair: ' + to_hex(decryptedKeyBuffer));
+				return keyDecode(decryptedKeyBuffer, resultEncoding);
 			}
-			//console.log('Decrypted encoded key pair: ' + to_hex(decryptedKeyBuffer));
-			return keyDecode(decryptedKeyBuffer, resultEncoding);
 		} else {
 			return keyDecode(b, resultEncoding);
 		}
 	}
 
-	function saveKey(keyPair, password){
+	function saveKey(keyPair, password, scryptProvider, callback){
 		if (typeof keyPair != 'object') throw new TypeError('keyPair must be an object');
 		if (password && !(typeof password == 'string' || password instanceof Uint8Array)) throw new TypeError('password must either be a string or a Uint8Array buffer');
+
+		if (scryptProvider){
+			if (typeof scryptProvider != 'function') throw new TypeError('when defined, scryptProvider must be a function');
+			if (typeof callback != 'function') throw new TypeError('when scryptProvider is defined, callback must be defined and must be a function');
+		}
+
 		var decodedKeyPair = {};
 
 		decodedKeyPair.keyType = keyPair.keyType;
@@ -626,23 +776,42 @@ var hpka = (function(){
 		var encodedKeyPair = keyEncode(decodedKeyPair);
 		//console.log('Encoded key pair: ' + to_hex(encodedKeyPair));
 		if (password){
-			var encryptedKeyBuffer = scryptEncrypt(encodedKeyPair, password);
-			var savedKeyBuffer = new Uint8Array(encryptedKeyBuffer.length + 1);
-			savedKeyBuffer[0] = (decodedKeyPair.keyType == 'curve25519' ? 0x05 : 0x06);
-			for (var i = 0; i < encryptedKeyBuffer.length; i++){
-				savedKeyBuffer[i+1] = encryptedKeyBuffer[i];
+			if (scryptProvider){
+				scryptProvider(encodedKeyPair, password, scryptProvider, function(err, _encryptedKeyBuffer){
+					if (err){
+						callback(err);
+						return;
+					}
+					var savedKeyBuffer = new Uint8Array(_encryptedKeyBuffer.length + 1);
+					savedKeyBuffer[0] = (decodedKeyPair.keyType == 'curve25519' ? 0x05 : 0x06);
+					for (var i = 0; i < _encryptedKeyBuffer.length; i++){
+						savedKeyBuffer[i+1] = _encryptedKeyBuffer[i];
+					}
+					callback(null, _encryptedKeyBuffer);
+				});
+			} else {
+				var encryptedKeyBuffer = scryptEncrypt(encodedKeyPair, password);
+				var savedKeyBuffer = new Uint8Array(encryptedKeyBuffer.length + 1);
+				savedKeyBuffer[0] = (decodedKeyPair.keyType == 'curve25519' ? 0x05 : 0x06);
+				for (var i = 0; i < encryptedKeyBuffer.length; i++){
+					savedKeyBuffer[i+1] = encryptedKeyBuffer[i];
+				}
+				return savedKeyBuffer;
 			}
-			return savedKeyBuffer;
 		} else return encodedKeyPair;
 	}
 
-	function buildPayload(keyPair, username, userAction, httpMethod, hostAndPath){
+	function buildPayload(keyPair, username, userAction, httpMethod, hostAndPath, sigProvider, callback){
 		if (typeof keyPair != 'object') throw new TypeError('keyPair must be an object');
 		if (!(typeof username == 'string' && username.length > 0)) throw new TypeError('Username must be a string');
 		if (!(typeof userAction == 'number' && userAction == Math.floor(userAction) && userAction >= 0 && userAction <= 3)) throw new TypeError('userAction must a byte between 0 and 3');
 		var vId = getVerbId(httpMethod);
 		if (!vId) throw new TypeError('Invalid HTTP method');
 
+		if (sigProvider){
+			if (typeof sigProvider != 'function') throw new TypeError('when defined, sigProvider must be a function');
+			if (typeof callback != 'function') throw new TypeError('when sigProvider is defined, callback must also be defined and must be a function');
+		}
 		var decodedKeyPair = {};
 
 		if (is_hex(keyPair.publicKey)){
@@ -679,8 +848,15 @@ var hpka = (function(){
 		}
 
 		//Sign and return HPKA headers
-		var hpkaSignature = sodium.crypto_sign_detached(signedBlob, decodedKeyPair.privateKey);
-		return {'req': to_base64(hpkaReqBuffer, true), 'sig': to_base64(hpkaSignature, true)};
+		if (sigProvider){ //Do it asynchronously using sigProvider
+			sigProvider(signedBlob, decodedKeyPair.privateKey, function(err, hpkaSignature){
+				if (err) callback(err);
+				else callback(null, {'req': to_base64(hpkaReqBuffer, true), 'sig': to_base64(hpkaSignature, true)});
+			});
+		} else { //Do it synchronously
+			var hpkaSignature = sodium.crypto_sign_detached(signedBlob, decodedKeyPair.privateKey);
+			return {'req': to_base64(hpkaReqBuffer, true), 'sig': to_base64(hpkaSignature, true)};
+		}
 	}
 
 	function buildPayloadWithoutSignature(keyPair, username, userAction){
@@ -743,6 +919,43 @@ var hpka = (function(){
 		if (!(b instanceof Uint8Array)) throw new TypeError('b must be an Uint8Array');
 		for (var i = 0; i < b.length; i++) if (b[i] != 0) return false;
 		return true;
+	}
+
+
+	function defaultSignatureProvider(message, privateKey, callback){
+		if (typeof callback != 'function') throw new TypeError('callback must be a function');
+		if (!(privateKey instanceof Uint8Array)){
+			callback(new Error('privateKey must be a Uint8Array'));
+			return;
+		}
+		if (!(message instanceof Uint8Array)){
+			callback(new Error('message must be a Uint8Array'));
+			return;
+		}
+		var signature;
+		try {
+			signature = sodium.crypto_sign_detached(message, privateKey);
+		} catch (e){
+			callback(e);
+			return;
+		}
+		callback(null, signature);
+	}
+
+	function defaultScryptProvider(args, callback){
+		if (typeof callback != 'function') throw new TypeError('callback must be a function');
+		if (!(Array.isArray(args) && args.length > 0)){
+			callback(new Error('args must be a non-empty array'));
+			return;
+		}
+		var derivedKey;
+		try {
+			derivedKey = sodium.crypto_pwhash_scryptsalsa208sha256_ll.apply(sodium, args);
+		} catch (e){
+			callback(e);
+			return;
+		}
+		callback(null, derivedKey);
 	}
 
 	lib.supportedAlgorithms = supportedAlgorithms;

@@ -7,3 +7,5 @@ test/sodium.min.js.gz
 test/hpka.js
 test/server_built
 out/
+*.log
+*/*.log
