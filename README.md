@@ -23,22 +23,30 @@ That will build libsodium to javascript and build its wrapper `sodium.js`. The f
 
 ## Usage
 
+Most functions involving "heavy cryptographic calculations" (e.g. : Ed25519 signatures and Scrypt key derviations) __can__ be used asynchronously, but can still be used synchronously.
+
 The library loads in a variable called `hpka`. It exposes the following methods:
 
 * `hpka.supportedAlgorithms()` : Returns a list containing the list of supported algorithms for the identity key. Currently, it only returns `['ed25519']`
-* `hpka.createIdentityKey([Buffer|String password])` : Create an Ed25519 identity key.
- 	* String|Buffer password : Optional. A password used to protected the key (for persistent storage)
-	* returns an (optionally encrypted) Uint8Array buffer containing the generated key pair
-* `hpka.scryptEncrypt(Buffer data, Buffer|String password)` : Encrypt the provided `data` with the provided `password` and returns the ciphertext. Uses scrypt for key derivation, XSalsa20 as cipher and the Poly1305 MAC
-	* Buffer data : the data to be encrypted
-	* Buffer|String password : the password to be dervied and used for encryption
-	* returns the ciphertext (as Uint8Array)
-* `hpka.scryptDecrypt(Buffer|String cipher, Buffer|String password)` : Decrypt the data encrypted by the `scryptEncrypt` method
-	* Buffer|String cipher : The data to be decrypted. If the provided data is a string, it must be hex encoded.
-	* Buffer|String password : The password that was used on encryption
+* `hpka.createIdentityKey([Buffer|String password], [Function scryptProvider], [Function callback])` : Create an Ed25519 identity key.
+    * `String|Buffer password` : Optional. A password used to protected the key (for persistent storage)
+    * `Function scryptProvider` : Optional. A function that will perform a Scrypt key derivation and then return it through a callback. Receives ([password, salt, opsLimit, r, p, keyLength], cb), where cb is the callback function that receives (err, derivedKey)
+    * `Function callback` : Optional. A function that will receive the result of the `createIdentityKey` call. __Using `callback` is mandatory if `scryptProvider` is provided.__ Received parameters : (err, identityKeyBuffer|encryptedIdentityKeyBuffer)
+    * returns an (optionally encrypted) Uint8Array buffer containing the generated key pair
+* `hpka.scryptEncrypt(Buffer data, Buffer|String password, [Function scryptProvider], [Function callback])` : Encrypt the provided `data` with the provided `password` and returns the ciphertext. Uses scrypt for key derivation, XSalsa20 as cipher and the Poly1305 MAC
+	* `Buffer data` : the data to be encrypted
+	* `Buffer|String password` : the password to be derived and used for encryption
+    * `Function scryptProvider` : Optional. A function that will perform a Scrypt key derivation and then return it through a callback. Receives ([password, salt, opsLimit, r, p, keyLength], cb), where cb is the callback function that receives (err, derivedKey)
+    * `Function callback` : Optional. A function that will receive the result of the `scryptEncrypt` call. __Using `callback` is mandatory if `scryptProvider` is provided.__ Received parameters : (err, cipherText)
+	* returns the cipherText (as Uint8Array)
+* `hpka.scryptDecrypt(Buffer|String cipher, Buffer|String password, [Function scryptProvider], [Function callback])` : Decrypt the data encrypted by the `scryptEncrypt` method
+	* `Buffer|String cipher` : The data to be decrypted. If the provided data is a string, it must be hex encoded.
+	* `Buffer|String password` : The password that was used on encryption
+    * `Function scryptProvider` : Optional. A function that will perform a Scrypt key derivation and then return it through a callback. Receives ([password, salt, opsLimit, r, p, keyLength], cb), where cb is the callback function that receives (err, derivedKey)
+    * `Function callback` : Optional. A function that will receive the result of the `scryptDecrypt` call. __Using `callback` is mandatory if `scryptProvider` is provided.__ Received parameters : (err, plaintext)
 	* returns the plaintext (as Uint8Array)
-* `hpka.loadKey(Buffer|String keyBuffer, [Buffer|String password], [String resultEncoding])` : Returns an `{keyType, publicKey, privateKey}` object, where the keys are either Uint8Arrays or strings encoded in `resultEncoding`
-* `hpka.saveKey(Object keyPair, [String|Buffer password])`
+* `hpka.loadKey(Buffer|String keyBuffer, [Buffer|String password], [String resultEncoding], [Function scryptProvider], [Function callback])` : Returns an `{keyType, publicKey, privateKey}` object, where the keys are either Uint8Arrays or strings encoded in `resultEncoding`
+* `hpka.saveKey(Object keyPair, [String|Buffer password], [Function scryptProvider], [Function callback])`
 * `hpka.buildPayload(Object keyPair, String username, Number userAction, String httpMethod, String hostAndPath)`
 * `hpka.Client(String username, Buffer keyBuffer, [Buffer|String password])` : Constructor method for an easy to use HPKA client  
 	* String username : the username to be used for the account
@@ -53,9 +61,11 @@ The library loads in a variable called `hpka`. It exposes the following methods:
 	* `hpka.Client.loadKey(Buffer|String keyBuffer, [Buffer|String password])` : Load a keypair into the Client
 	* `hpka.Client.keyLoaded()` : Returns whether the client has a keypair loaded in it
 	* `hpka.Client.setKeyTtl(Number ttlMilleseconds)` : Set a TTL (time-to-live) for the loaded key, after which it will be unreferenced. Note that the TTL is in milliseconds
-	* `hpka.Client.resetKeyTtl()` : Restart the TTL counter with the current value
+	* `hpka.Client.resetKeyTtl(ttl)` : Restart the TTL counter with the current value or with the new `ttl` value
 	* `hpka.Client.clearKeyTtl()` : Disable the set TTL
 	* `hpka.Client.hasKeyTtl()` : Get whether the client has a TTL set or not
+    * `hpka.Client.setSignatureProvider(Function sigProvider)` : Set the Ed25519 provider for this Client instance; a function that will perform the signature and then return it through a callback. That `sigProvider` function receives (message, privateKey, callback), where callback receives (err, signature)
+    * `hpka.Client.setScryptProvider(Function scProvider)` : Set the Scrypt provider for this Client instance; a function that will perform the key derivation and then return the result through a callback. That `scProvider` receives ([password, salt, opsLimit, r, p, keyLength], cb), where cb is the callback function that receives (err, derivedKey)
 * `hpka.defaultAgent(reqOptions, callback)` : The default HTTP (AJAX) agent used in the `Client` object.
 
 ### `reqOptions`
@@ -71,14 +81,14 @@ Here are the list of attributes taken in the `reqOptions` object:
 
 ## Test
 
-An automated testing page was written (`test/test.html`). To launch the tests :
+An automated testing page was written (`test/test.html`). To launch the tests:
 
 * From the repo's root folder, run:
 ```shell
 make test
 ```
 This will built the test server's dependencies (if not been previously built) and then launch it. Make sure that the dependencies listed above are installed on your computer.
-* Head your browser to `http://localhost:2500/test.html`, then click on the "Test" button
+* Head to your browser to `http://localhost:2500/test.html`, then click on the "Test" button
 
 ## License
 

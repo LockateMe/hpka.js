@@ -244,9 +244,13 @@ var hpka = (function(){
 		if (reqOptions.body && !(typeof reqOptions.body == 'object' || typeof reqOptions.body == 'string')) throw new TypeError('when defined, reqOptions.body must either an object or a string');
 	}
 
-	function createKey(password, callback){
+	function createKey(password, scryptProvider, callback){
 		if (password && !(password instanceof Uint8Array || typeof password == 'string')) throw new TypeError('When defined, password must either be a string or a Uint8Array');
 		if (callback && typeof callback != 'function') throw new TypeError('when defined, callback must be a function');
+		if (scryptProvider){
+			if (typeof scryptProvider != 'function') throw new TypeError('when defined, scryptProvider must be a function');
+			if (typeof callback != 'function') throw new TypeError('when scryptProvider is used, callback must be provided and must be a function');
+		}
 		var ed25519Seed = randomBuffer(sodium.crypto_sign_SEEDBYTES);
 		var ed25519KeyPair = sodium.crypto_sign_seed_keypair(ed25519Seed);
 
@@ -258,7 +262,7 @@ var hpka = (function(){
 				return;
 			}
 
-			scryptEncrypt(keyBuffer, password, defaultScryptProvider, function(err, _encryptedKeyBuffer){
+			scryptEncrypt(keyBuffer, password, scryptProvider || defaultScryptProvider, function(err, _encryptedKeyBuffer){
 				if (err){
 					callback(err);
 					return;
