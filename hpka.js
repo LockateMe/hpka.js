@@ -19,6 +19,11 @@ var hpka = (function(){
 	var buffer_to_string = sodium.uint8Array_to_String || sodium.to_string;
 	var string_to_buffer = sodium.string_to_Uint8Array || sodium.from_string;
 
+	var TwoPower16 = 1 << 16;
+	var TwoPower32 = TwoPower16 * TwoPower16;
+
+	var absMaxForSessionTTL = 45 * 365.25 * 24 * 3600; //1/1/2015 00:00:00 UTC, in seconds. A threshold just helping us determine whether the provided wantedSessionExpiration is a TTL or a timestamp
+
 	function supportedAlgorithms(){return ['ed25519'];}
 
 	function getVerbId(verb){
@@ -50,7 +55,7 @@ var hpka = (function(){
 		else return undefined;
 	}
 
-	function client(username, keyBuffer, password, sigProvider, scProvider, loadCallback){
+	function client(username, keyBuffer, password, sigProvider, scProvider, loadCallback, allowGetSessions){
 		if (typeof username != 'string') throw new TypeError('username must be a string');
 		if (!(keyBuffer && (keyBuffer instanceof Uint8Array || typeof keyBuffer == 'object'))) throw new TypeError('keyBuffer must be a Uint8Array');
 		if (password && !(typeof password == 'string' || password instanceof Uint8Array)) throw new TypeError('passowrd must be a Uint8Array');
@@ -62,7 +67,7 @@ var hpka = (function(){
 		var signatureProvider = sigProvider || defaultSignatureProvider, scryptProvider = scProvider || defaultScryptProvider;
 
 		var httpAgent = defaultAgent;
-		var _username, _password, _keyPair, _keyTtl, _keyClearTimeout;
+		var _username, _password, _keyPair, _keyTtl, _keyClearTimeout, _sessions = {};
 		_username = username;
 		if (keyBuffer instanceof Uint8Array){ //KeyBuffer to be decoded
 			//Double assignation of _keyPair to fit both sync and async cases
@@ -81,7 +86,17 @@ var hpka = (function(){
 		}
 
 		this.request = function(reqOptions, callback){
-			doHpkaReq(0x00, reqOptions, callback);
+			if (typeof reqOptions != 'object') throw new TypeError('reqOptions must be an object');
+
+			var hostname;
+			if (typeof reqOptions.headers == 'object') hostname = reqOptions.headers['Host'] || reqOptions.headers['host'];
+			hostname = hostname || reqOptions.host;
+
+			if (_sessions[hostname]){
+				doSessionReq(_sessions[hostname], reqOptions, callback);
+			} else {
+				doHpkaReq(0x00, reqOptions, callback);
+			}
 		};
 
 		this.registerAccount = function(reqOptions, callback){
@@ -90,6 +105,70 @@ var hpka = (function(){
 
 		this.deleteAccount = function(reqOptions, callback){
 			doHpkaReq(0x02, reqOptions, callback);
+		};
+
+		this.createSession = function(reqOptions, sessionId, wantedSessionExpiration, callback){
+			if (typeof callback != 'function') throw new TypeError('callback must be a function');
+
+			var tNow = Math.floor(Date.now() / 1000);
+
+			if (wantedSessionExpiration){
+				if (typeof wantedSessionExpiration != 'number') throw new TypeError('when defined, wantedSessionExpiration must be a number');
+				if (Math.floor(wantedSessionExpiration) != wantedSessionExpiration) throw new TypeError('when defined, wantedSessionExpiration must be an integer number');
+				if (wantedSessionExpiration != 0 && wantedSessionExpiration < absMaxForSessionTTL){ //Provided value is a TTL; convert it to timestamp
+					wantedSessionExpiration += tNow;
+				}
+				if (wantedSessionExpiration != 0){ //When a session life is defined, assert that the value is in the future
+					if (wantedSessionExpiration <= tNow) throw new Error('internal error');
+				}
+			}
+
+			doHpkaReq(0x04, reqOptions, function(err, statusCode, body, headers){
+				if (err){
+					callback(err);
+					return;
+				}
+				//Check that response headers are present
+				if (!headers){
+					callback(new Error('Critical: didn\'t receive headers from httpAgent on createSession'));
+					return;
+				}
+				if (typeof headers != 'object'){
+					if (typeof headers == 'string'){
+						headers = headersObject(headers);
+					} else {
+						callback(new Error('Unexpected headers type: ' + typeof headers));
+						return;
+					}
+				}
+				//Check that no hpka error occured
+				if (statusCode == 445){
+					var errHeader = headers['HPKA-Error'] || headers['hpka-error'];
+					callback(new Error('HPKA Error code: ' + errHeader));
+					return;
+				}
+				//Check that the server indeed returned a hpka-session-expiration header
+				var sessionIdExpiration = headers['HPKA-Session-Expiration'] || headers['hpka-session-expiration'];
+				if (typeof sessionIdExpiration == 'undefined' || sessionIdExpiration == null){
+					var err = 'NOT_ACCEPTED';
+					callback(new Error(err));
+					return;
+				}
+				//Getting the hostname of the server we connected to
+				var hostname;
+				if (typeof reqOptions.headers == 'object') hostname = reqOptions.headers['Host'] || reqOptions.headers['host'];
+				hostname = hostname || reqOptions.host;
+
+				//Saving the sessionId in the sessions hash
+				_sessions[hostname] = sessionId;
+
+				callback(undefined, statusCode, body, headers, sessionIdExpiration);
+
+			}, sessionId, wantedSessionExpiration || 0);
+		};
+
+		this.revokeSession = function(reqOptions, sessionId, callback){
+			doHpkaReq(0x05, reqOptions, callback, sessionId);
 		};
 
 		this.setHttpAgent = function(agent){
@@ -151,6 +230,10 @@ var hpka = (function(){
 			return !!_keyPair;
 		};
 
+		this.setSessions = function(_s){
+			throw new Error('');
+		}
+
 		function ttlEndHandler(){
 			//In case the original buffer was protected by password, remove references to it
 			_keyClearTimeout = null;
@@ -164,29 +247,49 @@ var hpka = (function(){
 			return reqOptions.host + reqOptions.path;
 		}
 
-		function doHpkaReq(actionCode, reqOptions, callback){
-			if (!(typeof actionCode == 'number' && Math.floor(actionCode) == actionCode && actionCode >= 0x00 && actionCode <= 0x04)) throw new TypeError('Invalid actionCode');
+		function doHpkaReq(actionCode, reqOptions, callback, sessionId, sessionExpiration){
+			if (!(typeof actionCode == 'number' && Math.floor(actionCode) == actionCode && actionCode >= 0x00 && actionCode <= 0x05)) throw new TypeError('Invalid actionCode');
 			if (typeof reqOptions != 'object') throw new TypeError('reqOptions must be an object');
 			if (typeof callback != 'function') throw new TypeError('callback must be a function');
 			validateReqOptions(reqOptions);
 
-			hpka.buildPayload(_keyPair, _username, actionCode, reqOptions.method, hostAndPath(reqOptions), signatureProvider, function(err, hpkaPayload){
-				if (err){
-					callback(err);
-					return;
-				}
+			try {
+				hpka.buildPayload(_keyPair, _username, actionCode, reqOptions.method, hostAndPath(reqOptions), signatureProvider, function(err, hpkaPayload){
+					if (err){
+						callback(err);
+						return;
+					}
 
+					if (!reqOptions.headers) reqOptions.headers = {};
+					reqOptions.headers['HPKA-Req'] = hpkaPayload.req;
+					reqOptions.headers['HPKA-Signature'] = hpkaPayload.sig;
+					httpAgent(reqOptions, callback);
+				}, sessionId, sessionExpiration);
+			} catch (e){
+				callback(e);
+			}
+		}
+
+		function doSessionReq(sessionId, reqOptions, callback){
+			if (!((sessionId instanceof Uint8Array) || typeof sessionId == 'string')) throw new TypeError('sessionId must either be a string or a Uint8Array');
+			if (sessionId.length == 0 || sessionId.length > 255) throw new TypeError('sessionId must be ]0; 256[ bytes long');
+			if (typeof reqOptions != 'object') throw new TypeError('reqOptions must be an object');
+			if (typeof callback != 'function') throw new TypeError('callback must be a function');
+			validateReqOptions(reqOptions);
+
+			try {
 				if (!reqOptions.headers) reqOptions.headers = {};
-				reqOptions.headers['HPKA-Req'] = hpkaPayload.req;
-				reqOptions.headers['HPKA-Signature'] = hpkaPayload.sig;
+				reqOptions.headers['HPKA-Session'] = buildSessionPayload(_username, sessionId);
 				httpAgent(reqOptions, callback);
-			});
+			} catch (e){
+				callback(e);
+			}
 		}
 	}
 
 	/*
 	* reqOptions: {host, port, path, method, headers, body, protocol}
-	* callback: (err, statusCode, body)
+	* callback: (err, statusCode, body, resHeaders)
 	*/
 	function defaultAgent(reqOptions, callback){
 		if (typeof reqOptions != 'object') throw new TypeError('reqOptions must be an object');
@@ -198,7 +301,7 @@ var hpka = (function(){
 		var reqUrl = reqOptions.protocol + '://' + reqOptions.host + ':' + reqOptions.port.toString() + reqOptions.path;
 		xhReq.open(reqOptions.method, reqUrl, true);
 		xhReq.onload = function(){
-			callback(null, xhReq.status, xhReq.responseText);
+			callback(null, xhReq.status, xhReq.responseText, xhReq.getAllResponseHeaders());
 		};
 		xhReq.onerror = function(e){
 			callback(e);
@@ -805,10 +908,21 @@ var hpka = (function(){
 		} else return encodedKeyPair;
 	}
 
-	function buildPayload(keyPair, username, userAction, httpMethod, hostAndPath, sigProvider, callback){
+	function buildPayload(keyPair, username, actionType, httpMethod, hostAndPath, sigProvider, callback, sessionId, sessionExpiration){
 		if (typeof keyPair != 'object') throw new TypeError('keyPair must be an object');
 		if (!(typeof username == 'string' && username.length > 0)) throw new TypeError('Username must be a string');
-		if (!(typeof userAction == 'number' && userAction == Math.floor(userAction) && userAction >= 0 && userAction <= 3)) throw new TypeError('userAction must a byte between 0 and 3');
+		if (!(typeof actionType == 'number' && actionType == Math.floor(actionType) && actionType >= 0 && actionType <= 5)) throw new TypeError('actionType must a byte between 0 and 5');
+		if (sessionId && !((sessionId instanceof Uint8Array || typeof sessionId == 'string') && sessionId.length > 0 && sessionId.length < 256)) throw new TypeError('when defined, sessionId must be a non-null buffer or string, max 255 bytes long');
+		if (sessionExpiration){
+			if (typeof sessionExpiration != 'number') throw new TypeError('when defined, sessionExpiration must be a number');
+			if (Math.floor(sessionExpiration) != sessionExpiration) throw new TypeError('when defined, sessionExpiration must be an integer number');
+			if (sessionExpiration < 0 || (sessionExpiration > 0 && Math.floor(Date.now() / 1000) > sessionExpiration)) throw new TypeError('when defined, sessionExpiration must either be equal to zero or UTC Unix epoch that is not yet passed');
+		}
+
+		if (actionType == 0x04 || actionType == 0x05){
+			if (!sessionId) throw new TypeError('when actionType == 0x04 or actionType == 0x05, sessionId must be defined');
+		}
+
 		var vId = getVerbId(httpMethod);
 		if (!vId) throw new TypeError('Invalid HTTP method');
 
@@ -836,7 +950,7 @@ var hpka = (function(){
 		var usernameBuffer = string_to_buffer(username);
 		if (usernameBuffer.length > 255) throw new TypeError('Username cannot be more than 255 bytes long');
 
-		var hpkaReqBuffer = buildPayloadWithoutSignature(decodedKeyPair, usernameBuffer, userAction);
+		var hpkaReqBuffer = buildPayloadWithoutSignature(decodedKeyPair, usernameBuffer, actionType, sessionId, sessionExpiration);
 
 		var hostAndPathBuf = string_to_buffer(hostAndPath);
 		var hostAndPathLength = hostAndPathBuf.length;
@@ -863,7 +977,7 @@ var hpka = (function(){
 		}
 	}
 
-	function buildPayloadWithoutSignature(keyPair, username, userAction){
+	function buildPayloadWithoutSignature(keyPair, username, actionType, sessionId, sessionExpiration){
 		var bufferLength = 0;
 		bufferLength += 1; //Protocol version byte
 		bufferLength += 8; //Timestamp bytes
@@ -875,6 +989,13 @@ var hpka = (function(){
 		bufferLength += 2; //Public key length field
 		bufferLength += sodium.crypto_sign_PUBLICKEYBYTES;
 
+		if (actionType == 0x04 || actionType == 0x05){
+			//Add sessionId, and a byte to state its length
+			bufferLength += 1 + sessionId.length;
+			//Add a session expiration date
+			if (actionType == 0x04 && sessionExpiration) bufferLength += 8;
+		}
+
 		var buffer = new Uint8Array(bufferLength);
 		var offset = 0;
 
@@ -883,10 +1004,17 @@ var hpka = (function(){
 		offset++;
 		//Writing the timestamp
 		var timestamp = Math.floor(Number(Date.now()) / 1000);
-		for (var i = 8; i > 0; i--){
-			buffer[offset] = timestamp >> (8 * (i - 1));
-			offset++;
+		var timestampParts = splitUInt(timestamp);
+		//Writing the left-hand part of the timestamp
+		for (var i = 4; i > 0; i--){
+			buffer[offset + i] = timestampParts.left >> (8 * (i - 1));
 		}
+		offset += 4;
+		//Writing the right-hand part of the timestamp
+		for (var i = 4; i > 0; i--){
+			buffer[offset + i] = timestampParts.right >> (8 * (i - 1));
+		}
+		offset += 4;
 		//Writing the username length, then the username itself
 		buffer[offset] = username.length;
 		offset++;
@@ -895,7 +1023,7 @@ var hpka = (function(){
 		}
 		offset += username.length;
 		//Writing the actionType
-		buffer[offset] = userAction;
+		buffer[offset] = actionType;
 		offset++;
 		//Writing the key type (Ed25519 == 0x08)
 		buffer[offset] = 0x08;
@@ -909,7 +1037,82 @@ var hpka = (function(){
 			buffer[offset+i] = keyPair.publicKey[i];
 		}
 		offset += keyPair.publicKey.length;
+
+		if (actionType == 0x04 || actionType == 0x05){
+			//Writing sessionId length
+			buffer[offset] = sessionId.length;
+			offset;
+			//Writing sessionId
+			for (var i = 0; i < sessionId.length; i++){
+				buffer[offset + i] = sessionId[i];
+			}
+			offset += sessionId.length;
+			//Writing a session expiration date, on session agreement request
+			if (actionType == 0x04 && sessionExpiration){
+				var sessionExpirationParts = splitUInt(sessionExpiration);
+				for (var i = 4; i > 0; i--){
+					buffer[offset + i] = sessionExpirationParts.left >> (8 * (i - 1));
+				}
+				offset += 4;
+				for (var i = 4; i > 0; i--){
+					buffer[offset + i] = sessionExpirationParts.right >> (8 * (i - 1));
+				}
+				offset += 4;
+			}
+		}
+
 		return buffer;
+	}
+
+	function buildSessionPayload(username, sessionId){
+		if (typeof username != 'string') throw new TypeError('username must be a string');
+		if (username.length == 0 || username.length > 255) throw new TypeError('username must be a string ]0; 256[ bytes long');
+		if (!((sessionId instanceof Uint8Array) || typeof sessionId == 'string')) throw new TypeError('sessionId must either be a string or a buffer');
+		if (sessionId.length == 0 || sessionId.length > 255) throw new TypeError('sessionId must be a ]0; 256[ bytes long');
+
+		/*
+		* 1 version byte
+		* 1 username length byte
+		* 8 timestamp bytes
+		* 1 sessionId length byte
+		*/
+		var minSize = 11;
+
+		var payloadBuf = new Uint8Array(minSize + username.length + sessionId.length);
+		var offset = 0;
+
+		//Writing protocol version
+		payloadBuf[offset] = 0x01;
+		offset++;
+		//Writing username length
+		payloadBuf[offset] = username.length;
+		offset++;
+		//Writing username
+		for (var i = 0; i < username.length; i++){
+			payloadBuf[offset + i] = username[i];
+		}
+		offset += username.length;
+		//Writing timestamp
+		var timestamp = Math.floor(Date.now() / 1000);
+		var timestampParts = splitUInt(timestamp);
+		for (var i = 4; i > 0; i--){
+			payloadBuf[i + offset] = timestampParts.left >> (8 * (i - 1));
+		}
+		offset += 4;
+		for (var i = 4; i > 0; i--){
+			payloadBuf[i + offset] = timestampParts.right >> (8 * (i - 1));
+		}
+		offset += 4;
+		//Writing sessionId length
+		payloadBuf[offset] = sessionId.length;
+		offset++;
+		//Writing sessionId
+		for (var i = 0; i < sessionId.length; i++){
+			payloadBuf[i + offset] = sessionId[i];
+		}
+		offset += sessionId.length;
+
+		return to_base64(payloadBuf);
 	}
 
 	function randomBuffer(size){
@@ -925,6 +1128,47 @@ var hpka = (function(){
 		return true;
 	}
 
+	function headersObject(h){
+		if (typeof h == 'object') return h;
+		else if (typeof h != 'string') throw new TypeError('invalid type for h: ' + typeof h);
+
+		var hObject = {};
+		var hArray = h.split(/\r\n/g);
+		for (var i = 0; i < hArray.length; i++){
+			var currentHeader = headerKeyVal(hArray[i]);
+			if (!currentHeader){
+				console.error('Cannot parse header: ' + hArray[i]);
+				continue;
+			}
+			hObject[currentHeader.key] = currentHeader.val;
+		}
+		return hObject;
+	}
+
+	function headerKeyVal(s){
+		if (typeof s != 'string') throw new TypeError('s must be a string');
+
+		var headerParts = s.split(/(:)/);
+		if (headerParts.length < 3) return undefined;
+		return {key: headerParts[0], val: headerParts.slice(2).join('')};
+	}
+
+	function splitUInt(n){
+		if (!(typeof n == 'number' && Math.floor(n) == n && n >= 0)) throw new TypeError('n must be a positive integer');
+		var l, r;
+		r = n % TwoPower32;
+		l = n - r;
+		return {left: l, right: r};
+	}
+
+	function joinUInt(left, right){
+		if (!(typeof left == 'number' && Math.floor(left) == left && left >= 0 && left < TwoPower32)) throw new TypeError('left must be an integer number within the range [0; 2^32-1]');
+		if (!(typeof right == 'number' && Math.floor(right) == right && right >= 0 && right < TwoPower32)) throw new TypeError('right must be an integer number with the range [0; 2^32-1]');
+		var n = 0;
+		n += right;
+		n += left * TwoPower32;
+		return n;
+	}
 
 	function defaultSignatureProvider(message, privateKey, callback){
 		if (typeof callback != 'function') throw new TypeError('callback must be a function');
