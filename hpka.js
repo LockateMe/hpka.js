@@ -134,9 +134,8 @@ var hpka = (function(){
 					return;
 				}
 				if (typeof headers != 'object'){
-					if (typeof headers == 'string'){
-						headers = headersObject(headers);
-					} else {
+					if (typeof headers == 'string') headers = headersObject(headers);
+					else {
 						callback(new Error('Unexpected headers type: ' + typeof headers));
 						return;
 					}
@@ -144,7 +143,7 @@ var hpka = (function(){
 				//Check that no hpka error occured
 				if (statusCode == 445){
 					var errHeader = headers['HPKA-Error'] || headers['hpka-error'];
-					callback(new Error('HPKA Error code: ' + errHeader));
+					callback(new Error('HPKA-Error:' + errHeader));
 					return;
 				}
 				//Check that the server indeed returned a hpka-session-expiration header
@@ -168,7 +167,39 @@ var hpka = (function(){
 		};
 
 		this.revokeSession = function(reqOptions, sessionId, callback){
-			doHpkaReq(0x05, reqOptions, callback, sessionId);
+			doHpkaReq(0x05, reqOptions, function(err, statusCode, body, headers){
+				if (err){
+					callback(err);
+					return;
+				}
+
+				if (!headers){
+					callback(new Error('Critical: didn\'t receive headers from httpAgent on revokeSession'));
+					return;
+				}
+
+				if (typeof headers != 'object'){
+					if (typeof headers == 'string') headers = headersObject(headers);
+					else {
+						callback(new Error('Unexpected headers type: ' + typeof headers));
+						return;
+					}
+				}
+
+				if (statusCode == 445){
+					var errHeader = headers['HPKA-Error'] || headers['hpka-error'];
+					callback(new Error('HPKA-Error:' + errHeader));
+					return;
+				}
+
+				var hostname;
+				if (typeof reqOptions.headers == 'object') hostname = reqOptions.headers['Host'] || reqOptions.headers['host'];
+				hostname = hostname || reqOptions.host;
+
+				delete _sessions[hostname];
+
+				callback(undefined, statusCode, body, headers);
+			}, sessionId);
 		};
 
 		this.setHttpAgent = function(agent){
@@ -230,9 +261,21 @@ var hpka = (function(){
 			return !!_keyPair;
 		};
 
-		this.setSessions = function(_s){
-			throw new Error('');
-		}
+		this.setSessions = function(sessionsHash, merge){
+			if (typeof sessionsHash != 'object') throw new TypeError('sessionsHash must be an object');
+			if (merge) for (s in sessionsHash) _sessions[s] = sessionsHash[s];
+			else _sessions = sessionsHash;
+		};
+
+		this.getSessions = function(){
+			if (!allowGetSessions) throw new Error('Retrieving sessionIds is not allowed by this client instance');
+			return clone(_sessions);
+		};
+
+		this.getSessionsReference = function(){
+			if (!allowGetSessions) throw new Error('Retrieving sessionIds is not allowed by this client instance');
+			return _sessions;
+		};
 
 		function ttlEndHandler(){
 			//In case the original buffer was protected by password, remove references to it
@@ -1204,6 +1247,26 @@ var hpka = (function(){
 			return;
 		}
 		callback(null, derivedKey);
+	}
+
+	function clone(o){
+		var typeO = typeof o;
+		if (typeO == 'object'){
+			if (Array.isArray(o)){
+				var c = [];
+				for (var i = 0; i < o.length; i++) c.push(clone(o[i]));
+				return c;
+			} else if (o instanceof Date){
+				return new Date(o.getTime());
+			} else if (o == null){
+				return null;
+			} else {
+				var props = Object.keys(o);
+				var c = {};
+				for (var i = 0; i < props.length; i++) c[props[i]] = clone(o[props[i]])
+				return c;
+			}
+		} else if (typeO == 'number' || typeO == 'string' || typeO == 'boolean') return o;
 	}
 
 	lib.supportedAlgorithms = supportedAlgorithms;
