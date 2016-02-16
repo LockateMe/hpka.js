@@ -22,11 +22,11 @@ libsodium-js/Makefile:
 
 test: out/sodium.js test/server_built
 	cp out/* test/
-	echo "Go to http://localhost:2500/test.html to test hpka.js"
-	iojs test/server.js || nodejs test/server.js || node test/server.js
+	# echo "Go to http://localhost:2500/test.html to test hpka.js"
+	iojs test/index.js || nodejs test/index.js || node test/index.js
 
 test/server_built:
-	cd test && npm install
+	npm install
 	touch test/server_built
 
 rewrap: libsodium-js/out/sodium.js
