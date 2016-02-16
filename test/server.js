@@ -5,109 +5,97 @@ var hpka = require('hpka');
 var fs = require('fs');
 var path = require('path');
 var mime = require('mime');
+var express = require('express');
+var bodyParser = require('body-parser');
 
-//In-memory list of registered users
+//In-memory list of registered users and sessions
 var userList = {};
+var sessions = {};
 
-//Getting the PKA info from a HPKAReq object
-function getPubKeyObject(HPKAReq){
-	//Checking that HPKAReq object is correctly formed
-	var reqObj = {};
-	if (!HPKAReq.keyType) throw new TypeError('Invalid HPKAReq obejct on getPubKeyObject method');
-	reqObj.keyType = HPKAReq.keyType;
-	if (HPKAReq.keyType == 'ecdsa'){ //ECDSA case
-		if (!(HPKAReq.curveName && HPKAReq.point && HPKAReq.point.x && HPKAReq.point.y)) throw new TypeError('Malformed ECDSA request');
-		reqObj.curveName = HPKAReq.curveName;
-		reqObj.point = HPKAReq.point;
-	} else if (HPKAReq.keyType == 'rsa'){ //RSA case
-		if (!(HPKAReq.modulus && HPKAReq.publicExponent)) throw new TypeError('Malformed RSA request');
-		reqObj.modulus = HPKAReq.modulus;
-		reqObj.publicExponent = HPKAReq.publicExponent;
-	} else if (HPKAReq.keyType == 'dsa'){ //DSA case
-		if (!(HPKAReq.primeField && HPKAReq.divider && HPKAReq.base && HPKAReq.publicElement)) throw new TypeError('Malformed DSA request');
-		reqObj.primeField = HPKAReq.primeField;
-		reqObj.divider = HPKAReq.divider;
-		reqObj.base = HPKAReq.base;
-		reqObj.publicElement = HPKAReq.publicElement;
-	} else if (HPKAReq.keyType == 'ed25519'){
-		if (!(HPKAReq.publicKey)) throw new TypeError('Malformed Ed25519 request');
-		reqObj.publicKey = HPKAReq.publicKey;
-	} else throw new TypeError('Invalid key type : ' + HPKAReq.keyType);
-	return reqObj;
+var httpPort = 2500;
+var maxSessionsLife = 7 * 24 * 3600;
+
+var yell = false;
+
+var server;
+var hpkaMiddleware;
+var applicationToUse;
+
+function log(m){
+	if (yell) console.log(m);
 }
 
-function checkPubKeyObjects(pubKey1, pubKey2){
-	if (!(typeof pubKey1 == 'object' && typeof pubKey2 == 'object')) throw new TypeError('Parameters must be objects');
-	if (pubKey1.keyType != pubKey2.keyType) return false;
-	if (pubKey1.keyType == "ecdsa"){
-		//console.log('Common type : ecdsa');
-		if (pubKey1.curveName != pubKey2.curveName) return false;
-		if (pubKey1.point.x != pubKey2.point.x) return false;
-		if (pubKey1.point.y != pubKey2.point.y) return false;
-	} else if (pubKey1.keyType == "rsa"){
-		//console.log('Common type : rsa');
-		if (pubKey1.modulus != pubKey2.modulus) return false;
-		if (pubKey1.publicExponent != pubKey2.publicExponent) return false;
-	} else if (pubKey1.keyType == "dsa"){
-		//console.log('Common type : dsa');
-		if (pubKey1.primeField != pubKey2.primeField) return false;
-		if (pubKey1.divider != pubKey2.divider) return false;
-		if (pubKey1.base != pubKey2.base) return false;
-		if (pubKey1.publicElement != pubKey2.publicElement) return false;
-	} else if (pubKey1.keyType == 'ed25519'){
-		//console.log('Common type : ed25519');
-		if (pubKey1.publicKey != pubKey2.publicKey) return false;
-	} else throw new TypeError('Invalid keyType');
-	return true;
+function writeRes(res, body, headers, statusCode){
+	headers = headers || {};
+	var bodyLength;
+
+	if (typeof body == 'object' && !Buffer.isBuffer(body)){
+		body = JSON.stringify(body);
+		headers['Content-Type'] = 'application/json';
+	}
+	if (Buffer.isBuffer(body)){
+		bodyLength = Buffer.byteLength(body);
+	} else { //Assuming string
+		bodyLength = body.length;
+	}
+
+	headers['Content-Length'] = bodyLength;
+
+	res.writeHead(statusCode || 200, headers);
+	res.write(body);
+	res.end();
 }
 
-var requestHandler = function(req, res){
+function writeHpkaErr(res, message, errorCode){
+	writeRes(res, message, {'HPKA-Error': errorCode}, 445);
+}
+
+
+var getHandler = function(req, res){
 	var headers = {'Content-Type': 'text/plain'};
 	var body;
-	if (req.url == '/'){
-		if (req.username){
-			//console.log(req.method + ' ' + req.url + ' authenticated request by ' + req.username);
-			body = 'Authenticated as : ' + req.username;
-			//Manual signature verification
-			var hpkaReq = req.headers['hpka-req'];
-			var hpkaSig = req.headers['hpka-signature'];
-			var method = req.method;
-			var reqUrl = 'http://' + (req.headers.hostname || req.headers.host) + req.url
-			//console.log('HpkaReq: ' + hpkaReq + '; HpkaSig: ' + hpkaSig + '; ' + method + '; reqUrl: ' + reqUrl);
-			hpka.verifySignature(hpkaReq, hpkaSig, reqUrl, method, function(isValid, username, hpkaReq){
+	if (req.username){
+		//console.log(req.method + ' ' + req.url + ' authenticated request by ' + req.username);
+		body = 'Authenticated as : ' + req.username;
+		//Manual signature verification
+		var hpkaReq = req.headers['hpka-req'];
+		var hpkaSig = req.headers['hpka-signature'];
+		var method = req.method;
+		var reqUrl = 'http://' + (req.headers.hostname || req.headers.host) + req.url
+		//console.log('HpkaReq: ' + hpkaReq + '; HpkaSig: ' + hpkaSig + '; ' + method + '; reqUrl: ' + reqUrl);
+		if (hpkaReq && hpkaSig){
+			hpka.verifySignature(hpkaReq, hpkaSig, reqUrl, method, function(err, isValid, username, hpkaReq){
+				if (err) console.error('Error in hpkaReq: ' + err);
 				if (!isValid) console.log('External validation failed');
 				//else console.log('External validation success: ' + username + ': ' + JSON.stringify(hpkaReq));
 			});
-		} else {
-			//console.log(req.method + ' ' + req.url + ' anonymous request');
-			body = 'Anonymous user';
 		}
-		headers['Content-Length'] = body.length;
-		res.writeHead(200, headers);
-		res.write(body);
-		res.end();
 	} else {
-		var filePath = path.join(__dirname, req.url.substring(1));
-		console.log('File requested: ' + filePath);
-		if (!fs.existsSync(filePath)){
-			res.writeHead(404);
-			res.write('Not found');
-			res.end();
-			return;
-		}
-		var fileStat = fs.statSync(filePath);
-		var headers = {'Content-Type': mime.lookup(filePath), 'Content-Length': fileStat.size};
-		res.writeHead(200, headers);
-		fs.readFile(filePath, function(err, data){
-			if (err) throw err;
-			res.write(data);
-			res.end();
-		});
+		//console.log(req.method + ' ' + req.url + ' anonymous request');
+		body = 'Anonymous user';
+	}
+
+	writeRes(res, body, headers, 200);
+};
+
+var postHandler = function(req, res){
+	if (req.body && Object.keys(req.body).length > 0){
+		//console.log('Testing req values');
+		assert.equal(req.body['field-one'], 'test', 'Unexpected form content');
+		assert.equal(req.body['field-two'], 'test 2', 'Unexpected form content');
+		assert.equal(req.headers.test, '1', 'Unexpected value the "test" header');
+	}
+	//console.log('Received form data: ' + JSON.stringify(req.body));
+	//console.log('"test" header value: ' + req.headers.test);
+	if (req.username){
+		res.send(200, 'OK');
+	} else {
+		res.send(401, 'Not authenticated');
 	}
 };
 
 var loginCheck = function(HPKAReq, req, res, callback){
-	if (userList[HPKAReq.username] && typeof userList[HPKAReq.username] == 'object' && checkPubKeyObjects(getPubKeyObject(HPKAReq), userList[HPKAReq.username])){
+	if (userList[HPKAReq.username] && typeof userList[HPKAReq.username] == 'object' && HPKAReq.checkPublicKeyEqualityWith(userList[HPKAReq.username])){
 		callback(true);
 		console.log('Authenticated request');
 	} else callback(false);
@@ -115,7 +103,7 @@ var loginCheck = function(HPKAReq, req, res, callback){
 
 var registration = function(HPKAReq, req, res){
 	var username = HPKAReq.username;
-	var keyInfo = getPubKeyObject(HPKAReq);
+	var keyInfo = HPKAReq.getPublicKey();
 	userList[username] = keyInfo;
 	console.log('User registration');
 	var body = 'Welcome ' + username + ' !';
@@ -126,6 +114,10 @@ var registration = function(HPKAReq, req, res){
 
 var deletion = function(HPKAReq, req, res){
 	if (typeof userList[HPKAReq.username] != 'object') return;
+	if (!HPKAReq.checkPublicKeyEqualityWith(userList[HPKAReq.username])){
+		writeHpkaErr(res, 'Invalid user key', 3);
+		return;
+	}
 	userList[HPKAReq.username] = undefined;
 	var headers = {'Content-Type': 'text/plain'};
 	var body = HPKAReq.username + ' has been deleted!';
@@ -147,9 +139,9 @@ var keyRotation = function(HPKAReq, newKeyReq, req, res){
 		headers['HPKA-Error'] = 4;
 	} else {
 		//Check that the actual key is correct
-		if (checkPubKeyObjects(userList[HPKAReq.username], getPubKeyObject(HPKAReq))){
+		if (HPKAReq.checkPublicKeyEqualityWith(userList[HPKAReq.username])){
 			//Replace the actual ke by the new key
-			userList[HPKAReq.username] = getPubKeyObject(newKeyReq);
+			userList[HPKAReq.username] = newKeyReq.getPublicKey();
 			body = 'Keys have been rotated!';
 		} else {
 			body = 'Invalid public key'
@@ -163,10 +155,158 @@ var keyRotation = function(HPKAReq, newKeyReq, req, res){
 	res.end();
 };
 
-var httpPort = 2500;
+var sessionCheck = function(SessionReq, req, res, callback){
+	var username = SessionReq.username;
+	var sessionId = SessionReq.sessionId;
 
+	if (!sessions[username]){
+		callback(false);
+		return;
+	}
+
+	var validId = false;
+	for (var i = 0; i < sessions[username].length; i++){
+		if (sessions[username][i] == sessionId){
+			validId = true;
+			break;
+		}
+	}
+
+	callback(validId);
+};
+
+var sessionAgreement = function(HPKAReq, req, callback){
+	var username = HPKAReq.username;
+	var sessionId = HPKAReq.sessionId;
+	//Expiration date agreement
+	var finalSessionExpiration;
+	var n = Math.floor(Date.now() / 1000);
+	var currentMaxExpiration = maxSessionsLife + n;
+	//User-provided expiration date for the sessionId
+	var userSetExpiration = HPKAReq.sessionExpiration || 0;
+	if (maxSessionsLife == 0){ //If the server doesn't impose a TTL, take the user-provided value as TTL
+		finalSessionExpiration = userSetExpiration;
+	} else if (userSetExpiration == 0 || userSetExpiration > currentMaxExpiration){ //Server-set TTL. Enforce lifespan
+		finalSessionExpiration = currentMaxExpiration;
+	} else {
+		finalSessionExpiration = userSetExpiration;
+	}
+	//Check keys
+	if (HPKAReq.checkPublicKeyEqualityWith(userList[username])){
+		//Accept a sessionId
+		if (sessions[username]){
+			//Save the sessionId in the existing array
+			//But before that, check that it's not already in the array
+			var alreadyAgreed = false;
+			for (var i = 0; i < sessions[username].length; i++) if (sessions[username][i] == sessionId){
+				alreadyAgreed = true;
+				break;
+			}
+			if (!alreadyAgreed) sessions[username].push(sessionId);
+		} else {
+			sessions[username] = [sessionId];
+		}
+		callback(true, finalSessionExpiration);
+	} else callback(false);
+};
+
+var sessionRevocation = function(HPKAReq, req, callback){
+	var username = HPKAReq.username;
+	var sessionId = HPKAReq.sessionId;
+	//Check keys
+	if (HPKAReq.checkPublicKeyEqualityWith(userList[username])){
+		//Revoke sessionId
+		var currentSessionList = sessions[username];
+		if (currentSessionList){
+			if (currentSessionList.length == 0) sessions[username] = null;
+			else {
+				//Check that the sessionId is in the array and remove it
+				for (var i = 0; i < currentSessionList.length; i++){
+					if (currentSessionList[i] == sessionId){
+						currentSessionList.splice(i, 1);
+						break;
+					}
+				}
+			}
+		}
+		callback(true);
+	} else callback(false);
+};
+
+exports.setup = function(strictMode, disallowSessions){
+	if (disallowSessions){
+		hpkaMiddleware = hpka.expressMiddleware(loginCheck, registration, deletion, keyRotation, strictMode);
+	} else {
+		hpkaMiddleware = hpka.expressMiddleware(loginCheck, registration, deletion, keyRotation, strictMode, sessionCheck, sessionAgreement, sessionRevocation);
+	}
+
+	var app = express();
+	app.use(bodyParser.json());
+	app.use(bodyParser.urlencoded());
+	app.use('/', express.static(__dirname));
+
+	app.use(hpkaMiddleware);
+
+	app.get('/', getHandler);
+	app.post('/', postHandler);
+
+	applicationToUse = app;
+};
+
+exports.clear = function(){
+	userList = {};
+	sessions = {};
+};
+
+exports.start = function(cb){
+	if (cb && typeof cb != 'function') throw new TypeError('when defined, cb must be a function');
+	if (!hpkaMiddleware) throw new TypeError('server not yet set up');
+
+	server = http.createServer(applicationToUse);
+	server.listen(serverPort, function(){
+		if (cb) cb();
+	});
+};
+
+exports.stop = function(cb){
+	if (cb && typeof cb != 'function') throw new TypeError('when defined, cb must be a function');
+
+	if (!server){
+		if (cb) cb();
+		return;
+	}
+
+	server.close(function(){
+		server = undefined;
+		if (cb) cb();
+	});
+};
+
+exports.getServerPort = function(){
+	return serverPort;
+};
+
+exports.setServerPort = function(p){
+	if (!(typeof p == 'number' && p > 0 && p < 65536 && p == Math.floor(p))) throw new TypeError('p must be an integer number, in the [1-65535] range');
+	serverPort = p;
+};
+
+exports.getMaxSessionLife = function(){
+	return maxSessionsLife;
+};
+
+exports.setMaxSessionLife = function(ttl){
+	if (!(typeof ttl == 'number' && ttl > 0 && ttl == Math.floor(ttl))) throw new TypeError('n must be a positive integer number');
+};
+
+expors.setYell = function(_y){
+	yell = _y;
+};
+
+/*
 console.log('Starting the server');
 var server = http.createServer(hpka.httpMiddleware(requestHandler, loginCheck, registration, deletion, keyRotation, true));
 server.listen(httpPort, function(){
 	console.log('Server started on port ' + httpPort);
 });
+*/
