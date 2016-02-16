@@ -4,7 +4,6 @@ var http = require('http');
 var hpka = require('hpka');
 var fs = require('fs');
 var path = require('path');
-var mime = require('mime');
 var express = require('express');
 var bodyParser = require('body-parser');
 
