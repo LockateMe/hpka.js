@@ -262,7 +262,7 @@ exports.start = function(cb){
 	if (!hpkaMiddleware) throw new TypeError('server not yet set up');
 
 	server = http.createServer(applicationToUse);
-	server.listen(serverPort, function(){
+	server.listen(httpPort, function(){
 		if (cb) cb();
 	});
 };
@@ -282,12 +282,12 @@ exports.stop = function(cb){
 };
 
 exports.getServerPort = function(){
-	return serverPort;
+	return httpPort;
 };
 
 exports.setServerPort = function(p){
 	if (!(typeof p == 'number' && p > 0 && p < 65536 && p == Math.floor(p))) throw new TypeError('p must be an integer number, in the [1-65535] range');
-	serverPort = p;
+	httpPort = p;
 };
 
 exports.getMaxSessionLife = function(){
@@ -298,7 +298,7 @@ exports.setMaxSessionLife = function(ttl){
 	if (!(typeof ttl == 'number' && ttl > 0 && ttl == Math.floor(ttl))) throw new TypeError('n must be a positive integer number');
 };
 
-expors.setYell = function(_y){
+exports.setYell = function(_y){
 	yell = _y;
 };
 
@@ -309,3 +309,11 @@ server.listen(httpPort, function(){
 	console.log('Server started on port ' + httpPort);
 });
 */
+
+if (!module.parent){
+	//Stand-alone execution
+	exports.setup();
+	exports.start(function(){
+		console.log('Server started on port ' + httpPort);
+	});
+}
