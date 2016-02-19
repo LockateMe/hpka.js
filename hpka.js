@@ -133,19 +133,6 @@ var hpka = (function(){
 					callback(new Error('Critical: didn\'t receive headers from httpAgent on createSession'));
 					return;
 				}
-				if (typeof headers != 'object'){
-					if (typeof headers == 'string') headers = headersObject(headers);
-					else {
-						callback(new Error('Unexpected headers type: ' + typeof headers));
-						return;
-					}
-				}
-				//Check that no hpka error occured
-				if (statusCode == 445){
-					var errHeader = headers['HPKA-Error'] || headers['hpka-error'];
-					callback(new Error('HPKA-Error:' + errHeader));
-					return;
-				}
 				//Check that the server indeed returned a hpka-session-expiration header
 				var sessionIdExpiration = headers['HPKA-Session-Expiration'] || headers['hpka-session-expiration'];
 				if (typeof sessionIdExpiration == 'undefined' || sessionIdExpiration == null){
@@ -170,25 +157,6 @@ var hpka = (function(){
 			doHpkaReq(0x05, reqOptions, function(err, statusCode, body, headers){
 				if (err){
 					callback(err);
-					return;
-				}
-
-				if (!headers){
-					callback(new Error('Critical: didn\'t receive headers from httpAgent on revokeSession'));
-					return;
-				}
-
-				if (typeof headers != 'object'){
-					if (typeof headers == 'string') headers = headersObject(headers);
-					else {
-						callback(new Error('Unexpected headers type: ' + typeof headers));
-						return;
-					}
-				}
-
-				if (statusCode == 445){
-					var errHeader = headers['HPKA-Error'] || headers['hpka-error'];
-					callback(new Error('HPKA-Error:' + errHeader));
 					return;
 				}
 
@@ -306,7 +274,23 @@ var hpka = (function(){
 					if (!reqOptions.headers) reqOptions.headers = {};
 					reqOptions.headers['HPKA-Req'] = hpkaPayload.req;
 					reqOptions.headers['HPKA-Signature'] = hpkaPayload.sig;
-					httpAgent(reqOptions, callback);
+					httpAgent(reqOptions, function(err, statusCode, body, headers){
+						if (err){
+							callback(err);
+							return;
+						}
+						//Check headers format. Interrupt execution and send error through callback if it fails
+						headers = processHeaders(headers, reqOptions, callback);
+						if (!headers) return;
+						//If this line is reached, then processHeaders succeeded
+						//Look for HPKA Errors
+						if (statusCode == 445){
+							callback(new Error('HPKA-Error:' + (headers['HPKA-Error'] || headers['hpka-error'])), statusCode, body, headers);
+							return;
+						}
+						//Pass the validated response elements to the calling function
+						callback(undefined, statusCode, body, headers);
+					});
 				}, sessionId, sessionExpiration);
 			} catch (e){
 				callback(e);
@@ -323,9 +307,37 @@ var hpka = (function(){
 			try {
 				if (!reqOptions.headers) reqOptions.headers = {};
 				reqOptions.headers['HPKA-Session'] = buildSessionPayload(_username, sessionId);
-				httpAgent(reqOptions, callback);
+				httpAgent(reqOptions, function(err, statusCode, body, headers){
+					if (err){
+						callback(err);
+						return;
+					}
+					headers = processHeaders(headers, reqOptions, callback);
+					if (!headers) return;
+					//If this line is reached, then processHeaders succeeded
+					//Look for HPKA errors
+					if (statusCode == 445){
+						callback(new Error('HPKA-Error:' + (headers['HPKA-Error'] || headers['hpka-error'])), statusCode, body, headers);
+						return;
+					}
+					//Pass the validated response elements to the calling function
+					callback(undefined, statusCode, body, headers);
+				});
 			} catch (e){
 				callback(e);
+			}
+		}
+
+		function processHeaders(h, reqOptions, callback){
+			if (!h){
+				callback(new Error('Critical: didn\'t receive headers from ' + reqOptions.host + reqOptions.path));
+				return;
+			}
+			if (typeof h == 'object') return h;
+			else if (typeof h == 'string') return headersObject(h);
+			else {
+				callback(new TypeError('Critical: invalid headers type ('  + typeof h + ')'));
+				return;
 			}
 		}
 	}
@@ -336,21 +348,28 @@ var hpka = (function(){
 	*/
 	function defaultAgent(reqOptions, callback){
 		if (typeof reqOptions != 'object') throw new TypeError('reqOptions must be an object');
-		if (typeof callback != 'function') throw new TypeError('callback must be a function');
+		if (callback && typeof callback != 'function') throw new TypeError('when defined, callback must be a function');
 
 		validateReqOptions(reqOptions);
 
 		var xhReq = new XMLHttpRequest();
 		var reqUrl = reqOptions.protocol + '://' + reqOptions.host + ':' + reqOptions.port.toString() + reqOptions.path;
-		xhReq.open(reqOptions.method, reqUrl, true);
+		var reqErr;
+		var resHeaders;
+		xhReq.open(reqOptions.method, reqUrl, !!callback);
 		xhReq.onload = function(){
-			callback(null, xhReq.status, xhReq.responseText, xhReq.getAllResponseHeaders());
+			console.log('On load');
+			resHeaders = xhReq.getAllResponseHeaders();
+			if (typeof headers != 'object') resHeaders = headersObject(resHeaders);
+			if (callback) callback(null, xhReq.status, xhReq.responseText, headers);
 		};
 		xhReq.onerror = function(e){
-			callback(e);
+			reqErr = e;
+			if (callback) callback(e);
 		};
 		xhReq.onabort = function(e){
-			callback(e);
+			reqErr = e;
+			if (callback) callback(e);
 		}
 
 		if (reqOptions.headers){
@@ -360,7 +379,7 @@ var hpka = (function(){
 
 		if (reqOptions.body){
 			var bodyStr;
-			if (typeof reqOptions.body == 'object'){
+			if (typeof reqOptions.body == 'object' && !(reqOptions.body instanceof Uint8Array)){
 				xhReq.setRequestHeader('Content-Type', 'appplication/json');
 				try {
 					bodyStr = JSON.stringify(reqOptions.body);
@@ -368,9 +387,20 @@ var hpka = (function(){
 					throw new Error('Cannot stringify body object. Please check for circular references');
 					return;
 				}
-			} else bodyStr = reqOptions.body;
+			}
+			else if (reqOptions.body instanceof Uint8Array) bodyStr = reqOptions.body.buffer;
+			else bodyStr = reqOptions.body;
 			xhReq.send(bodyStr);
 		} else xhReq.send();
+
+		var syncObject = {};
+		if (reqErr) syncObject.err = reqErr;
+		else {
+			syncObject.statusCode = xhReq.status;
+			syncObject.headers = resHeaders;
+			syncObject.body = xhReq.responseText;
+		}
+		return syncObject;
 	}
 
 	function validateReqOptions(reqOptions){
@@ -1191,7 +1221,7 @@ var hpka = (function(){
 	function headerKeyVal(s){
 		if (typeof s != 'string') throw new TypeError('s must be a string');
 
-		var headerParts = s.split(/(:)/);
+		var headerParts = s.split(/(: ?)/);
 		if (headerParts.length < 3) return undefined;
 		return {key: headerParts[0], val: headerParts.slice(2).join('')};
 	}
@@ -1278,6 +1308,8 @@ var hpka = (function(){
 	lib.buildPayload = buildPayload;
 	lib.Client = client;
 	lib.defaultAgent = defaultAgent;
+	lib._validateReqOptions = validateReqOptions;
+	lib._headersObject = headersObject;
 
 	return lib;
 })();

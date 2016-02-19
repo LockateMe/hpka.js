@@ -6,5 +6,78 @@
 	<body>
 		<script src="sodium.js"></script>
 		<script src="hpka.js"></script>
+		<script>
+			function performReqSync(reqOptions, body){
+				reqOptions.body = body;
+
+				return hpka.defaultAgent(reqOptions);
+			}
+
+			var testUsername;
+			var testPassword
+			var testClient;
+			var serverSettings;
+
+			var key1, key2;
+
+			/*
+			Every async function will store it's result (passed through the callback) in this variable
+			A method called `waitForResult` in the test client code will wait until a result is available in this variable
+			*/
+			var cbResult;
+
+			function setup(_tu, _tp, allowGetSessions, _serverSettings){
+				testUsername = _tu;
+				testPassword = _tp;
+				serverSettings = _serverSettings;
+
+				key1 = hpka.createKey(testPassword);
+				key2 = hpka.createKey(testPassword);
+
+				testClient = new hpka.Client(testUsername, key1);
+			}
+
+			/*function performReq(reqOptions, body, callback){
+				if (typeof reqOptions != 'object') throw new TypeError('reqOptions must be an object');
+				if (body && ((body instanceof Uint8Array) || typeof body == 'string' || typeof body == 'object')) throw new TypeError('when defined, body must either be a buffer or a string');
+				if (typeof callback != 'function') throw new TypeError('callback must be a function');
+
+				hpka._validateReqOptions(reqOptions);
+
+				var xhReq = new XMLHttpRequest();
+				var reqUrl = reqOptions.protocol + '://' + reqOptions.host + ':' + reqOptions.port.toString() + reqOptions.path;
+
+				xhReq.open(reqOptions.method, reqUrl, true);
+				xhReq.onload = function(){
+					var headers = xhReq.getAllResponseHeaders();
+					if (typeof headers != 'object') headers = hpka._headersObject(headers);
+				}
+
+				if (body){
+					if (!reqOptions.headers) reqOptions.headers = {};
+
+					//Object to JSON
+					if (typeof body == 'object' && !(body instanceof Uint8Array || body instanceof FormData)){
+						body = JSON.stringify(body);
+						reqOptions.headers['Content-Type'] = 'application/json';
+					}
+					//Calc body length
+					if (body instanceof Uint8Array){
+						reqOptions.headers['Content-Length'] = body.length;
+					} else if (typeof body == 'string') {
+
+					} else { //FormData
+
+					}
+				}
+
+				if (reqOptions.headers){
+					for (var i = 0; i < reqOptions.headers.length; i++){
+
+					}
+				}
+			}*/
+
+		</script>
 	</body>
 </html>
