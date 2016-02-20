@@ -1,6 +1,6 @@
 var assert = require('assert');
 var ph = require('phantom');
-var phOptions = {};
+var phOptions = [];
 
 var phantom;
 var testPage;
@@ -90,9 +90,9 @@ exports.setServerSettings = function(_serverSettings){
 };
 
 exports.setup = function(allowGetSessions, cb){
-	runInBrowser(function(){
-		setup.apply(this, arguments);
-	}, cb, [testUsername, testPassword, allowGetSessions]);
+	runInBrowser(function(args){
+		setup.apply(this, args);
+	}, [testUsername, testPassword, allowGetSessions, serverSettings], cb);
 };
 
 exports.start = function(cb){
@@ -106,14 +106,24 @@ exports.start = function(cb){
 	ph.create(phOptions).then(function(pInstance){
 		phantom = pInstance;
 
-		phantom.createPage().then(function(_p){
-			testPage = _p;
-			phantom.open('http://' + serverSettings.hostname + ':' + serverSettings.port + '/unit.html').then(function(status){
-				console.log('Page loading status: ' + status);
+		phantom.createPage()
+			.then(function(_p){
+				testPage = _p;
+				testPage.open('http://' + serverSettings.hostname + ':' + serverSettings.port + '/unit.html').then(function(status){
 
-				if (cb) cb();
+					if (cb) cb();
+				});
+			})
+			.catch(function(err){
+				console.error('Create page err');
+				console.error(err);
+				process.exit(1);
 			});
-		});
+	})
+	.catch(function(err){
+		console.error('Create phantom err');
+		console.error(err);
+		process.exit(1);
 	});
 };
 
@@ -145,7 +155,28 @@ exports.unauthenticatedReq = function(cb){
 exports.registrationReq = function(cb, _expectedBody, _expectedStatusCode){
 	if (typeof cb != 'function') throw new TypeError('cb must be a function');
 
+	if (_expectedBody && !isString(_expectedBody)) throw new TypeError('when defined, _expectedBody must be a non-null string');
+	validStatusCode(_expectedStatusCode);
 
+	var expectedBody = _expectedBody || ('Welcome ' + testUsername + '!');
+	var expectedStatusCode = _expectedStatusCode || 200;
+
+	runInBrowser(function(serverSettings){
+		testClient.registerUser(serverSettings, function(err, statusCode, body){
+			var r = {err: err, statusCode: statusCode, body: body};
+			cbResult = r;
+		});
+	}, [serverSettings], function(){
+		waitForResult(function(res){
+			if (res.err && !isHPKAError(res.err)){
+				throw res.err;
+			}
+
+			assert.equal(res.statusCode, expectedStatusCode, 'Unexpected status code on registration: ' + res.statusCode);
+			assert.equal(res.body, expectedBody, 'Unexpected message on registration: ' + res.body);
+			cb();
+		});
+	})
 };
 
 exports.authenticatedReq = function(cb, withForm, strictMode, _expectedBody, _expectedSuccess){

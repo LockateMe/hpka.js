@@ -1,4 +1,5 @@
 var testServer = require('./server');
+var testClient = require('./client');
 
 var cbLoc = '#cbhere#';
 var yell = false;
@@ -54,8 +55,11 @@ function performTests(strictMode, disallowSessions, next, taskIndex, testTotal){
 
 	function setupClient(N){
 		testClient.setServerSettings(serverSettings);
-		log('Generating identity key');
-		testClient.start(N);
+		log('Starting client');
+		testClient.start(function(){
+			log('Generating identity key');
+			testClient.setup(false, N);
+		});
 	}
 
 	function testNormalRequests(N){
@@ -138,8 +142,8 @@ function performTests(strictMode, disallowSessions, next, taskIndex, testTotal){
 	}
 
 	var testGroups = [
-		{f: setupClient, a: [cbLoc]},
 		{f: setupServer, a: [cbLoc]},
+		{f: setupClient, a: [cbLoc]},
 		{f: testNormalRequests, a: [cbLoc]},
 		//{f: testSpoofedRequests, a: [cbLoc]},
 		//{f: testMalformedRequests, a: [cbLoc]},

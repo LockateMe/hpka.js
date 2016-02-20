@@ -31,8 +31,8 @@
 				testPassword = _tp;
 				serverSettings = _serverSettings;
 
-				key1 = hpka.createKey(testPassword);
-				key2 = hpka.createKey(testPassword);
+				key1 = hpka.createIdentityKey(testPassword);
+				key2 = hpka.createIdentityKey(testPassword);
 
 				testClient = new hpka.Client(testUsername, key1);
 			}
