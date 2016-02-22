@@ -5,7 +5,8 @@ var cbLoc = '#cbhere#';
 var yell = false;
 
 var serverSettings = {
-	hostname: 'localhost',
+	protocol: 'http',
+	host: 'localhost',
 	port: 2500,
 	method: 'GET',
 	path: '/'

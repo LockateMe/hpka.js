@@ -59,9 +59,14 @@ function performReq(reqOptions, body, callback){
 
 	testPage.evaluate(function(reqOptions, body){
 		return performReqSync(reqOptions, body);
-	}, function(resObj){
+	}, reqOptions, body)
+	.then(function(resObj){
 		callback(undefined, resObj.body, resObj);
-	}, reqOptions, body);
+	})
+	.catch(function(err){
+		console.error('Error on performReq: ' + err);
+		process.exit(1);
+	});
 }
 
 function waitForResult(cb){
@@ -124,11 +129,12 @@ exports.start = function(cb){
 					log('Page message: ' + m);
 				});*/
 
-				testPage.open('http://' + serverSettings.hostname + ':' + serverSettings.port + '/unit.html').then(function(status){
+				testPage.open('http://' + serverSettings.host + ':' + serverSettings.port + '/unit.html').then(function(status){
 
-					testPage.property('onConsoleMessage', function(msg, lineNum, sourceId) {
+					/*testPage.property('onConsoleMessage', function(msg, lineNum, sourceId) {
 						log('CONSOLE: ' + msg + ' (from line #' + lineNum + ' in "' + sourceId + '")');
 					});
+					*/
 
 					if (cb) cb();
 				});
