@@ -1083,18 +1083,6 @@ var hpka = (function(){
 		offset += 4;
 		writeUInt32BE(timestampParts.right, offset, buffer);
 		offset += 4;
-		/*
-		//Writing the left-hand part of the timestamp
-		for (var i = 4; i > 0; i--){
-			buffer[offset + i] = timestampParts.left >> (8 * (i - 1));
-		}
-		offset += 4;
-		//Writing the right-hand part of the timestamp
-		for (var i = 4; i > 0; i--){
-			buffer[offset + i] = timestampParts.right >> (8 * (i - 1));
-		}
-		offset += 4;
-		*/
 		//Writing the username length, then the username itself
 		buffer[offset] = username.length;
 		offset++;
@@ -1134,16 +1122,6 @@ var hpka = (function(){
 				offset += 4;
 				writeUInt32BE(sessionExpirationParts.right, offset, buffer);
 				offset += 4;
-				/*
-				for (var i = 4; i > 0; i--){
-					buffer[offset + i] = sessionExpirationParts.left >> (8 * (i - 1));
-				}
-				offset += 4;
-				for (var i = 4; i > 0; i--){
-					buffer[offset + i] = sessionExpirationParts.right >> (8 * (i - 1));
-				}
-				offset += 4;
-				*/
 			}
 		}
 
@@ -1185,16 +1163,6 @@ var hpka = (function(){
 		offset += 4;
 		writeUInt32BE(timestampParts.right, offset, payloadBuf);
 		offset += 4;
-		/*
-		for (var i = 4; i > 0; i--){
-			payloadBuf[i + offset] = timestampParts.left >> (8 * (i - 1));
-		}
-		offset += 4;
-		for (var i = 4; i > 0; i--){
-			payloadBuf[i + offset] = timestampParts.right >> (8 * (i - 1));
-		}
-		offset += 4;
-		*/
 		//Writing sessionId length
 		payloadBuf[offset] = sessionId.length;
 		offset++;
