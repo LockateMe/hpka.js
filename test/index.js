@@ -68,9 +68,8 @@ function performTests(strictMode, disallowSessions, next, taskIndex, testTotal){
 			{f: testClient.authenticatedReq, a: [cbLoc, false, strictMode, undefined, false], m: 'Authenticated request before registration. Expected failure'},
 			{f: testClient.registrationReq, a: [cbLoc], m: 'User registration'},
 			{f: testClient.authenticatedReq, a: [cbLoc, false, strictMode], m: 'Authenticated request'},
+			{f: testClient.authenticatedReq, a: [cbLoc, true, strictMode], m: 'Authenticated request with FormData'}
 		];
-
-		if (useExpress) calls.push({f: testClient.authenticatedReq, a: [cbLoc, true, strictMode], m: 'Authenticated request with FormData'});
 
 		//Add key rotation task in all cases
 		calls.push({f: testClient.keyRotationReq, a: [cbLoc, './newhpkaclient.key'], m: 'Testing key rotation request'});

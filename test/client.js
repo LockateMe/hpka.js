@@ -48,39 +48,43 @@ function equalToOne(val, matchingArray){
 	return false;
 }
 
-function runInBrowser(func, args, cb){
+/*function runInBrowser(func, args, cb){
 	if (!testPage) throw new TypeError('testPage is not yet initialized');
-	testPage.evaluate(func, cb, args);
-}
+	var evalArgs = [func, cb];
+	for (var i = 0; i < args.length; i++) evalArgs.push(args[i]);
+	testPage.evaluate.apply(this, evalArgs);
+}*/
 
 function performReq(reqOptions, body, callback){
 
-	runInBrowser(function(nodeArgs){
-		return performReq.apply(this, nodeArgs);
-	}, [reqOptions, body], function(resObj){
+	testPage.evaluate(function(reqOptions, body){
+		return performReqSync(reqOptions, body);
+	}, function(resObj){
 		callback(undefined, resObj.body, resObj);
-	});
+	}, reqOptions, body);
 }
 
 function waitForResult(cb){
 	if (typeof cb != 'function') throw new TypeError('cb must be a function');
 
 	function getResult(){
-		runInBrowser(function(){
+		testPage.evaluate(function(){
 			if (!cbResult) return;
 
 			var r = cbResult;
 			cbResult = null;
 			return r;
-		}, [], function(result){
+		}).then(function(result){
 			if (result) cb(result);
 			else wait();
-		})
+		});
 	}
 
 	function wait(){
 		setTimeout(getResult, 50);
 	}
+
+	getResult();
 }
 
 exports.setServerSettings = function(_serverSettings){
@@ -90,9 +94,15 @@ exports.setServerSettings = function(_serverSettings){
 };
 
 exports.setup = function(allowGetSessions, cb){
-	runInBrowser(function(args){
-		setup.apply(this, args);
-	}, [testUsername, testPassword, allowGetSessions, serverSettings], cb);
+	testPage.evaluate(function(){
+		var argsArray = arguments.length === 1 ? [arguments[0]] : Array.apply(null, arguments);
+		setupClient.apply(null, argsArray);
+	}, testUsername, testPassword, allowGetSessions, serverSettings)
+	.then(cb)
+	.catch(function(err){
+		console.error('Error while setting up the test client: ' + err);
+		process.exit(1);
+	});
 };
 
 exports.start = function(cb){
@@ -109,7 +119,16 @@ exports.start = function(cb){
 		phantom.createPage()
 			.then(function(_p){
 				testPage = _p;
+
+				/*testPage.property('onConsoleMessage', function(m, msgLine){
+					log('Page message: ' + m);
+				});*/
+
 				testPage.open('http://' + serverSettings.hostname + ':' + serverSettings.port + '/unit.html').then(function(status){
+
+					testPage.property('onConsoleMessage', function(msg, lineNum, sourceId) {
+						log('CONSOLE: ' + msg + ' (from line #' + lineNum + ' in "' + sourceId + '")');
+					});
 
 					if (cb) cb();
 				});
@@ -161,7 +180,29 @@ exports.registrationReq = function(cb, _expectedBody, _expectedStatusCode){
 	var expectedBody = _expectedBody || ('Welcome ' + testUsername + '!');
 	var expectedStatusCode = _expectedStatusCode || 200;
 
-	runInBrowser(function(serverSettings){
+	testPage.evaluate(function(serverSettings){
+		testClient.registerUser(serverSettings, function(err, statusCode, body){
+			var r = {err: err, statusCode: statusCode, body: body};
+			cbResult = r;
+		});
+	}, serverSettings)
+	.then(function(){
+		waitForResult(function(res){
+			if (res.err && !isHPKAError(res.err)){
+				throw res.err;
+			}
+
+			assert.equal(res.statusCode, expectedStatusCode, 'Unexpected status code on registration: ' + res.statusCode);
+			assert.equal(res.body, expectedBody, 'Unexpected message on registration: ' + res.body);
+			cb();
+		});
+	})
+	.catch(function(e){
+		console.error('Error on registrationReq: ' + e);
+		process.exit(1);
+	});
+
+	/*runInBrowser(function(serverSettings){
 		testClient.registerUser(serverSettings, function(err, statusCode, body){
 			var r = {err: err, statusCode: statusCode, body: body};
 			cbResult = r;
@@ -176,7 +217,7 @@ exports.registrationReq = function(cb, _expectedBody, _expectedStatusCode){
 			assert.equal(res.body, expectedBody, 'Unexpected message on registration: ' + res.body);
 			cb();
 		});
-	})
+	})*/
 };
 
 exports.authenticatedReq = function(cb, withForm, strictMode, _expectedBody, _expectedSuccess){
@@ -207,7 +248,58 @@ exports.authenticatedReq = function(cb, withForm, strictMode, _expectedBody, _ex
 
 	var expectedHPKAErrValue = '3';
 
-	runInBrowser(function(serverSettings, withForm){
+	testPage.evaluate(function(serverSettings, withForm){
+		var reqSettings;
+
+		if (withForm){
+			var fData = new FormData();
+			fData.append('field-one', 'test');
+			fData.append('field-two', 'test 2');
+
+			reqSettings = {
+				hostname: serverSettings.hostname,
+				host: serverSettings.host,
+				port: serverSettings.port,
+				method: 'POST',
+				path: serverSettings.path,
+				headers: {
+					'test': 1
+				},
+				body: fData
+			};
+		} else {
+			reqSettings = serverSettings;
+		}
+
+		testClient.request(reqSettings, function(err, statusCode, body){
+			var r = {err: err, statusCode: statusCode, body: body};
+			cbResult = r;
+		});
+	}, serverSettings, withForm)
+	.then(function(){
+		waitForResult(function(res){
+			if (res.err && !isHPKAError(res.err)){
+				throw res.err;
+			}
+
+			assert.equal(res.statusCode, expectedStatusCode, 'Unexpected status code on authenticated request: ' + res.statusCode);
+
+			if (strictMode){
+				assert.equal(res.body, expectedBody, 'Unexpected response body in authenticated request (strict-mode): ' + res.body);
+				if (_expectedSuccess) assert.equal(res.err.toLowerCase().replace(/ +/g, ''), 'hpka-error:' + expectedHPKAErrValue, 'Unexpected HPKA error code: ' + res.err);
+			} else {
+				assert.equal(res.body, expectedBody, 'Unexpected response body in authenticated request (non-strict mode):' + res.body);
+			}
+
+			cb();
+		});
+	})
+	.catch(function(err){
+		console.error('Error on authenticatedReq: ' + e);
+		process.exit(1);
+	});
+
+	/*runInBrowser(function(serverSettings, withForm){
 		var reqSettings;
 
 		if (withForm){
@@ -251,7 +343,7 @@ exports.authenticatedReq = function(cb, withForm, strictMode, _expectedBody, _ex
 
 			cb();
 		});
-	});
+	});*/
 };
 
 exports.deletionReq = function(cb, _expectedBody, _expectedStatusCode){

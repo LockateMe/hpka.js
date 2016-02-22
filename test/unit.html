@@ -18,6 +18,7 @@
 			var testClient;
 			var serverSettings;
 
+			var keyBuffer1, keyBuffer2;
 			var key1, key2;
 
 			/*
@@ -26,15 +27,18 @@
 			*/
 			var cbResult;
 
-			function setup(_tu, _tp, allowGetSessions, _serverSettings){
+			function setupClient(_tu, _tp, allowGetSessions, _serverSettings){
 				testUsername = _tu;
 				testPassword = _tp;
 				serverSettings = _serverSettings;
 
-				key1 = hpka.createIdentityKey(testPassword);
-				key2 = hpka.createIdentityKey(testPassword);
+				keyBuffer1 = hpka.createIdentityKey(testPassword);
+				keyBuffer2 = hpka.createIdentityKey(testPassword);
 
-				testClient = new hpka.Client(testUsername, key1);
+				key1 = hpka.loadKey(keyBuffer1, testPassword);
+				key2 = hpka.loadKey(keyBuffer2, testPassword);
+
+				testClient = new hpka.Client(testUsername, keyBuffer1, testPassword, undefined, undefined, undefined, allowGetSessions);
 			}
 
 			/*function performReq(reqOptions, body, callback){
