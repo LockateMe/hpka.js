@@ -358,7 +358,6 @@ var hpka = (function(){
 		var resHeaders;
 		xhReq.open(reqOptions.method, reqUrl, !!callback);
 		xhReq.onload = function(){
-			console.log('On load');
 			resHeaders = xhReq.getAllResponseHeaders();
 			if (typeof headers != 'object') resHeaders = headersObject(resHeaders);
 			if (callback) callback(null, xhReq.status, xhReq.responseText, resHeaders);
@@ -1197,7 +1196,7 @@ var hpka = (function(){
 		for (var i = 0; i < hArray.length; i++){
 			var currentHeader = headerKeyVal(hArray[i]);
 			if (!currentHeader){
-				console.error('Cannot parse header: ' + hArray[i]);
+				//if (console.warn) console.warn('Cannot parse header: ' + hArray[i]);
 				continue;
 			}
 			hObject[currentHeader.key] = currentHeader.val;
