@@ -96,7 +96,7 @@ var postHandler = function(req, res){
 var loginCheck = function(HPKAReq, req, res, callback){
 	if (userList[HPKAReq.username] && typeof userList[HPKAReq.username] == 'object' && HPKAReq.checkPublicKeyEqualityWith(userList[HPKAReq.username])){
 		callback(true);
-		console.log('Authenticated request');
+		//console.log('Authenticated request');
 	} else callback(false);
 };
 
@@ -104,7 +104,7 @@ var registration = function(HPKAReq, req, res){
 	var username = HPKAReq.username;
 	var keyInfo = HPKAReq.getPublicKey();
 	userList[username] = keyInfo;
-	console.log('User registration');
+	//console.log('User registration');
 	var body = 'Welcome ' + username + ' !';
 	res.writeHead(200, {'Content-Type': 'text/plain', 'Content-Length': body.length});
 	res.write(body);
@@ -120,7 +120,7 @@ var deletion = function(HPKAReq, req, res){
 	userList[HPKAReq.username] = undefined;
 	var headers = {'Content-Type': 'text/plain'};
 	var body = HPKAReq.username + ' has been deleted!';
-	console.log('User deletion');
+	//console.log('User deletion');
 	headers['Content-Length'] = body.length;
 	res.writeHead(200, headers);
 	res.write(body);
