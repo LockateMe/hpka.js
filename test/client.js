@@ -82,6 +82,9 @@ function waitForResult(cb){
 		}).then(function(result){
 			if (result) cb(result);
 			else wait();
+		}).catch(function(err){
+			console.error('Error while waitForResult: ' + JSON.stringify(err));
+			process.exit(1);
 		});
 	}
 
@@ -187,7 +190,7 @@ exports.registrationReq = function(cb, _expectedBody, _expectedStatusCode){
 	var expectedStatusCode = _expectedStatusCode || 200;
 
 	testPage.evaluate(function(serverSettings){
-		testClient.registerUser(serverSettings, function(err, statusCode, body){
+		testClient.registerAccount(serverSettings, function(err, statusCode, body){
 			var r = {err: err, statusCode: statusCode, body: body};
 			cbResult = r;
 		});
@@ -263,7 +266,6 @@ exports.authenticatedReq = function(cb, withForm, strictMode, _expectedBody, _ex
 			fData.append('field-two', 'test 2');
 
 			reqSettings = {
-				hostname: serverSettings.hostname,
 				host: serverSettings.host,
 				port: serverSettings.port,
 				method: 'POST',
@@ -285,7 +287,8 @@ exports.authenticatedReq = function(cb, withForm, strictMode, _expectedBody, _ex
 	.then(function(){
 		waitForResult(function(res){
 			if (res.err && !isHPKAError(res.err)){
-				throw res.err;
+				console.error(res.err);
+				process.exit(1);
 			}
 
 			assert.equal(res.statusCode, expectedStatusCode, 'Unexpected status code on authenticated request: ' + res.statusCode);
