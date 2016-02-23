@@ -64,22 +64,35 @@ var hpka = (function(){
 		if (scProvider && typeof scProvider != 'function') throw new TypeError('when provided, scProvider must be a function');
 		if (loadCallback && typeof loadCallback != 'function') throw new TypeError('when provided, loadCallback must be a function');
 
-		var signatureProvider = sigProvider || defaultSignatureProvider, scryptProvider = scProvider || defaultScryptProvider;
+		//var signatureProvider = sigProvider || defaultSignatureProvider, scryptProvider = scProvider || defaultScryptProvider;
+
+		var signatureProvider = sigProvider == null ? null : (sigProvider || defaultSignatureProvider);
+		var scryptProvider = scProvider == null ? null : (scProvider || defaultScryptProvider);
 
 		var httpAgent = defaultAgent;
 		var _username, _password, _keyPair, _keyTtl, _keyClearTimeout, _sessions = {};
 		_username = username;
 		if (keyBuffer instanceof Uint8Array){ //KeyBuffer to be decoded
-			//Double assignation of _keyPair to fit both sync and async cases
-			_keyPair = loadKey(keyBuffer, password, undefined, scryptProvider, function(err, _kp){
-				if (err){
-					if (loadCallback){
-						loadCallback(err);
-						return;
-					} else throw err;
-				}
-				_keyPair = _kp;
-			});
+			if (scryptProvider){
+				/*
+				The reasons behind this double assignation :
+				- The loaded key is returned if password is undefined
+				- The loaded key is passed through the callback if password is provided
+				*/
+				_keyPair = loadKey(keyBuffer, password, undefined, scryptProvider, function(err, _kp){
+					if (err){
+						if (loadCallback){
+							loadCallback(err);
+							return;
+						} else throw err;
+					}
+					_keyPair = _kp;
+				});
+
+			} else {
+				_keyPair = loadKey(keyBuffer, password);
+			}
+
 		} else { //Standard keyPair object
 			if (!isKeyPair(keyBuffer)) throw new TypeError('invalid keyBuffer/keyPair parameter');
 			_keyPair = keyBuffer;
@@ -392,6 +405,9 @@ var hpka = (function(){
 			xhReq.send(bodyStr);
 		} else xhReq.send();
 
+		//The result has been passed through the callback. Hence, the call doesn't need to "return" anything
+		if (callback) return;
+
 		var syncObject = {};
 		if (reqErr) syncObject.err = reqErr;
 		else {
@@ -571,7 +587,7 @@ var hpka = (function(){
 		var bufIndex = 1;
 		if (keyTypeByte == 0x05){ //Curve25519
 			//Check that length is respected.
-			if (enc.length != c25519ExpectedSize) throw new TypeError('Invalid size for Curve25519 key buffer');
+			if (enc.length != c25519ExpectedSize) throw new TypeError('Invalid size for Curve25519 key buffer (maybe a password should be provided to hpka.loadKey() )');
 			decodedKeyPair.keyType = 'curve25519';
 			//Reading claimed public key size and check validity
 			var advPubKeySize = (enc[bufIndex] << 8) + enc[bufIndex+1];
@@ -597,7 +613,7 @@ var hpka = (function(){
 			bufIndex += sodium.crypto_box_SECRETKEYBYTES;
 		} else { //Ed25519
 			//Check that length is respected
-			if (enc.length != ed25519ExpectedSize) throw new TypeError('Invalid size for Ed25519 key buffer');
+			if (enc.length != ed25519ExpectedSize) throw new TypeError('Invalid size for Ed25519 key buffer (maybe a password should be provided to hpka.loadKey() )');
 			decodedKeyPair.keyType = 'ed25519';
 			//Reading claimed public key size
 			var advPubKeySize = (enc[bufIndex] << 8) + enc[bufIndex+1];
@@ -1045,7 +1061,9 @@ var hpka = (function(){
 			});
 		} else { //Do it synchronously
 			var hpkaSignature = sodium.crypto_sign_detached(signedBlob, decodedKeyPair.privateKey);
-			return {'req': to_base64(hpkaReqBuffer, true), 'sig': to_base64(hpkaSignature, true)};
+			var resultObj = {'req': to_base64(hpkaReqBuffer, true), 'sig': to_base64(hpkaSignature, true)};
+			if (callback) callback(null, resultObj);
+			else return resultObj;
 		}
 	}
 
@@ -1076,7 +1094,6 @@ var hpka = (function(){
 		offset++;
 		//Writing the timestamp
 		var timestamp = Math.floor(Number(Date.now()) / 1000);
-		console.log('timestamp: ' + timestamp);
 		var timestampParts = splitUInt(timestamp);
 		writeUInt32BE(timestampParts.left, offset, buffer);
 		offset += 4;
