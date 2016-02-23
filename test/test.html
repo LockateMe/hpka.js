@@ -174,7 +174,7 @@
 						c.registerAccount(_reqOptions, function(err, statusCode, body){
 							if (err){
 								e = err;
-								log('Error while registering account: ' + err);
+								log('Error while registering account: ' + JSON.stringify(err));
 							} else {
 								log('Status code after registration: ' + statusCode);
 								log('Response body: ' + body);
@@ -187,7 +187,7 @@
 						c.request(_reqOptions, function(err, statusCode, body){
 							if (err){
 								e = err;
-								log('Error while making authenticated request: ' + err);
+								log('Error while making authenticated request: ' + JSON.stringify(err));
 							} else {
 								log('Status code after authenticated request: ' + statusCode);
 								log('Response body: ' + body);
@@ -200,7 +200,7 @@
 						c.deleteAccount(_reqOptions, function(err, statusCode, body){
 							if (err){
 								e = err;
-								log('Error while deleting account: ' + err);
+								log('Error while deleting account: ' + JSON.stringify(err));
 							} else {
 								log('Status code after account deletion: ' + statusCode);
 								log('Response body: ' + body);
