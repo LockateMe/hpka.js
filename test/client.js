@@ -186,7 +186,7 @@ exports.registrationReq = function(cb, _expectedBody, _expectedStatusCode){
 	if (_expectedBody && !isString(_expectedBody)) throw new TypeError('when defined, _expectedBody must be a non-null string');
 	validStatusCode(_expectedStatusCode);
 
-	var expectedBody = _expectedBody || ('Welcome ' + testUsername + '!');
+	var expectedBody = _expectedBody || ('Welcome ' + testUsername + ' !');
 	var expectedStatusCode = _expectedStatusCode || 200;
 
 	testPage.evaluate(function(serverSettings){
