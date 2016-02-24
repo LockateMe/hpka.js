@@ -271,7 +271,7 @@ exports.authenticatedReq = function(cb, withForm, strictMode, _expectedBody, _ex
 				method: 'POST',
 				path: serverSettings.path,
 				headers: {
-					'test': 1
+					'test': '1'
 				},
 				body: fData
 			};

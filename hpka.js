@@ -365,23 +365,54 @@ var hpka = (function(){
 
 		validateReqOptions(reqOptions);
 
+		//console.log('Req options validated');
+
 		var xhReq = new XMLHttpRequest();
 		var reqUrl = reqOptions.protocol + '://' + reqOptions.host + ':' + reqOptions.port.toString() + reqOptions.path;
 		var reqErr;
 		var resHeaders;
 		xhReq.open(reqOptions.method, reqUrl, !!callback);
 		xhReq.onload = function(){
+			//console.log('onload');
 			resHeaders = xhReq.getAllResponseHeaders();
 			if (typeof headers != 'object') resHeaders = headersObject(resHeaders);
 			if (callback) callback(null, xhReq.status, xhReq.responseText, resHeaders);
 		};
 		xhReq.onerror = function(e){
+			//console.log('onerror');
+			console.log(e);
 			reqErr = e;
 			if (callback) callback(e);
 		};
 		xhReq.onabort = function(e){
+			//console.log('onabort');
 			reqErr = e;
 			if (callback) callback(e);
+		};
+		/*xhReq.onreadystatechange = function(e){
+			console.log('onreadystatechange')
+
+		};*/
+
+		//console.log('xhReq opened');
+
+		var bodyToSend;
+
+		if (reqOptions.body){
+			if (typeof reqOptions.body == 'object' && !(reqOptions.body instanceof Uint8Array || reqOptions.body instanceof FormData)){
+				xhReq.setRequestHeader('Content-Type', 'appplication/json');
+				try {
+					bodyToSend = JSON.stringify(reqOptions.body);
+				} catch (e){
+					throw new Error('Cannot stringify body object. Please check for circular references');
+					return;
+				}
+			}
+			else if (reqOptions.body instanceof Uint8Array) bodyToSend = reqOptions.body.buffer;
+			else {
+				console.log('Is formdata ? ' + (reqOptions.body instanceof FormData).toString());
+				bodyToSend = reqOptions.body;
+			}
 		}
 
 		if (reqOptions.headers){
@@ -389,21 +420,9 @@ var hpka = (function(){
 			for (var i = 0; i < headersNames.length; i++) xhReq.setRequestHeader(headersNames[i], reqOptions.headers[headersNames[i]]);
 		}
 
-		if (reqOptions.body){
-			var bodyStr;
-			if (typeof reqOptions.body == 'object' && !(reqOptions.body instanceof Uint8Array)){
-				xhReq.setRequestHeader('Content-Type', 'appplication/json');
-				try {
-					bodyStr = JSON.stringify(reqOptions.body);
-				} catch (e){
-					throw new Error('Cannot stringify body object. Please check for circular references');
-					return;
-				}
-			}
-			else if (reqOptions.body instanceof Uint8Array) bodyStr = reqOptions.body.buffer;
-			else bodyStr = reqOptions.body;
-			xhReq.send(bodyStr);
-		} else xhReq.send();
+		xhReq.send(bodyToSend);
+
+		//console.log('Req has been sent');
 
 		//The result has been passed through the callback. Hence, the call doesn't need to "return" anything
 		if (callback) return;
@@ -432,7 +451,7 @@ var hpka = (function(){
 		if (!(typeof reqOptions.method == 'string' && getVerbId(reqOptions.method))) throw new TypeError('reqOptions.method must be a string and a valid HTTP method');
 		if (!(typeof reqOptions.port == 'number' && !isNaN(reqOptions.port) && Math.floor(reqOptions.port) == reqOptions.port && reqOptions.port > 0 && reqOptions.port < 65536)) throw new TypeError('reqOptions.port must be a positive integer between 0 and 65536');
 		if (!(typeof reqOptions.protocol == 'string' && (reqOptions.protocol == 'http' || reqOptions.protocol == 'https'))) throw new TypeError('Protocol must either be "http" or "https"');
-		if (reqOptions.body && !(typeof reqOptions.body == 'object' || typeof reqOptions.body == 'string')) throw new TypeError('when defined, reqOptions.body must either an object or a string');
+		if (reqOptions.body && !((reqOptions.body instanceof Uint8Array) || (reqOptions.body instanceof FormData) || typeof reqOptions.body == 'object' || typeof reqOptions.body == 'string')) throw new TypeError('when defined, reqOptions.body must either an object, a string, a Uint8Array or a FormData instance');
 	}
 
 	function createKey(password, scryptProvider, callback){

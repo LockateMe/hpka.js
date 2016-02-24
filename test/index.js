@@ -68,8 +68,11 @@ function performTests(strictMode, disallowSessions, next, taskIndex, testTotal){
 			{f: testClient.unauthenticatedReq, a: [cbLoc], m: 'Testing an unauthenticated request'},
 			{f: testClient.authenticatedReq, a: [cbLoc, false, strictMode, undefined, false], m: 'Authenticated request before registration. Expected failure'},
 			{f: testClient.registrationReq, a: [cbLoc], m: 'User registration'},
-			{f: testClient.authenticatedReq, a: [cbLoc, false, strictMode], m: 'Authenticated request'},
+			{f: testClient.authenticatedReq, a: [cbLoc, false, strictMode], m: 'Authenticated request'}
+
+			/*,
 			{f: testClient.authenticatedReq, a: [cbLoc, true, strictMode], m: 'Authenticated request with FormData'}
+			*/
 		];
 
 		//Add key rotation task in all cases
