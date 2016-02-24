@@ -1334,6 +1334,7 @@ var hpka = (function(){
 	lib.loadKey = loadKey;
 	lib.saveKey = saveKey;
 	lib.buildPayload = buildPayload;
+	lib.buildSessionPayload = buildSessionPayload;
 	lib.Client = client;
 	lib.defaultAgent = defaultAgent;
 	lib._validateReqOptions = validateReqOptions;
