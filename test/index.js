@@ -75,8 +75,8 @@ function performTests(strictMode, disallowSessions, next, taskIndex, testTotal){
 			*/
 		];
 
-		//Add key rotation task in all cases
-		calls.push({f: testClient.keyRotationReq, a: [cbLoc, './newhpkaclient.key'], m: 'Testing key rotation request'});
+		//Key rotation not yet implemented in hpka.js
+		//calls.push({f: testClient.keyRotationReq, a: [cbLoc], m: 'Testing key rotation request'});
 
 		if (!disallowSessions){
 			//Default TTL settings
