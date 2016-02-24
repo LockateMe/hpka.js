@@ -11,6 +11,8 @@ var testUsername = 'test';
 var testPassword = 'password';
 var testSessionId;
 
+var absMaxForSessionTTL = 45 * 365.25 * 24 * 3600; //1/1/2015 00:00:00 UTC, in seconds. A threshold just helping us determine whether the provided wantedSessionExpiration is a TTL or a timestamp
+
 function validStatusCode(n){
 	if (!n) return;
 	var v = typeof n == 'number' && Math.floor(n) == n && n >= 100 && n < 600;
@@ -198,7 +200,8 @@ exports.registrationReq = function(cb, _expectedBody, _expectedStatusCode){
 	.then(function(){
 		waitForResult(function(res){
 			if (res.err && !isHPKAError(res.err)){
-				throw res.err;
+				console.error('Error on registrationReq: ' + res.err);
+				process.exit(1);
 			}
 
 			assert.equal(res.statusCode, expectedStatusCode, 'Unexpected status code on registration: ' + res.statusCode);
@@ -287,7 +290,7 @@ exports.authenticatedReq = function(cb, withForm, strictMode, _expectedBody, _ex
 	.then(function(){
 		waitForResult(function(res){
 			if (res.err && !isHPKAError(res.err)){
-				console.error(res.err);
+				console.error('Error on authenticatedReq:' + res.err);
 				process.exit(1);
 			}
 
@@ -307,72 +310,244 @@ exports.authenticatedReq = function(cb, withForm, strictMode, _expectedBody, _ex
 		console.error('Error on authenticatedReq: ' + e);
 		process.exit(1);
 	});
+};
 
-	/*runInBrowser(function(serverSettings, withForm){
-		var reqSettings;
+exports.deletionReq = function(cb, _expectedBody, _expectedStatusCode){
+	if (typeof cb != 'function') throw new TypeError('cb must be a function');
 
-		if (withForm){
-			var fData = new FormData();
-			fData.append('field-one', 'test');
-			fData.append('field-two', 'test 2');
+	if (_expectedBody && !isString(_expectedBody)) throw new TypeError('When defined, _expectedBody must be a non-null string');
+	validStatusCode(_expectedStatusCode);
 
-			reqSettings = {
-				hostname: serverSettings.hostname,
-				host: serverSettings.host,
-				port: serverSettings.port,
-				method: 'POST',
-				path: serverSettings.path,
-				headers: {
-					'test': 1
-				},
-				body: fData
-			};
-		} else {
-			reqSettings = serverSettings;
-		}
+	var expectedBody = _expectedBody || (testUsername + ' has been deleted!');
+	var expectedStatusCode = _expectedStatusCode || 200;
 
-		testClient.request(reqSettings, function(err, statusCode, body){
+	testPage.evaluate(function(serverSettings){
+		testClient.deleteAccount(serverSettings, function(err, statusCode, body){
 			var r = {err: err, statusCode: statusCode, body: body};
 			cbResult = r;
 		});
-	}, [serverSettings, withForm], function(){
+	}, serverSettings)
+	.then(function(){
 		waitForResult(function(res){
 			if (res.err && !isHPKAError(res.err)){
-				throw res.err;
+				console.error('Error while deleting user account : ' + res.err);
+				process.exit(1);
 			}
 
-			assert.equal(res.statusCode, expectedStatusCode, 'Unexpected status code on authenticated request: ' + res.statusCode);
+			assert.equal(res.statusCode, expectedStatusCode, 'Unexpected status code on account deletion request: ' + res.statusCode);
+			assert.equal(res.body, expectedBody, 'Unexpected response body on account deletion request: ' + res.body);
+			cb();
+		});
+	})
+	.catch(function(e){
+		console.error('Error while deleting user account : ' + e);
+		process.exit(1);
+	});
+};
+
+exports.keyRotationReq = function(cb, _expectedBody, _expectedStatusCode){
+	/*if (typeof cb != 'function') throw new TypeError('cb must be a function');
+
+	if (_expectedBody && !isString(_expectedBody)) throw new TypeError('when defined, _expectedBody must be a non-null string');
+	validStatusCode(_expectedStatusCode);
+
+	var expectedBody = _expectedBody || 'Keys have been rotated!';
+	var expectedStatusCode = _expectedStatusCode || 200;
+
+	testPage.evaluate(function(serverSettings){
+
+	})
+	.then(function(){
+		waitForResult(function(res){
+			if (res.err && !isHPKAError(res.err)){
+				console.error(res.err);
+				process.exit(1);
+			}
+
+			assert.equal(res.statusCode, expectedStatusCode, 'Unexpected status code on key rotation: ' + res.statusCode);
+			assert.equal(res.body, expectedBody, 'Unexpected response body on key rotation: ' + body);
+
+			cb();
+		});
+	})
+	.catch(function(e){
+		console.error('Error while rotating user keys : ' + e);
+		process.exit(1);
+	});*/
+};
+
+exports.sessionAgreementReq = function(cb, wantedSessionExpiration, _expectedBody, _expectedStatusCode, _expectedSessionExpiration){
+	if (typeof cb != 'function') throw new TypeError('cb must be a function');
+
+	if (_expectedBody && !isString(_expectedBody)) throw new TypeError('when defined, _expectedBody must be a non-null string');
+	validStatusCode(_expectedStatusCode);
+
+	var expectedBody = _expectedBody || 'Session created';
+	var expectedStatusCode = _expectedStatusCode || 200;
+	var expectedSessionExpiration = _expectedSessionExpiration || wantedSessionExpiration || 0; //Server-import || user-defined || 0 (default, no TTL on session)
+
+	if (expectedSessionExpiration && expectedSessionExpiration != 0 && expectedSessionExpiration < absMaxForSessionTTL){
+		//The provided expectedSessionExpiration is a time-to-live (TTL), and not and expiration date
+		expectedSessionExpiration += Math.floor(Date.now() / 1000);
+	}
+
+	testPage.evaluate(function(serverSettings, wantedSessionExpiration){
+
+		var newSessionId = new Uint8Array(16);
+		window.crypto.getRandomValues(newSessionId);
+
+		testClient.createSession(serverSettings, newSessionId, wantedSessionExpiration, function(err, statusCode, body, headers, sessionExpiration){
+			var r = {
+				err: err,
+				statusCode: statusCode,
+				body: body,
+				headers: headers,
+				sessionExpiration: sessionExpiration,
+				sessionId: sodium.to_hex(newSessionId)
+			};
+			cbResult = r;
+		});
+
+	}, serverSettings, wantedSessionExpiration)
+	.then(function(){
+		waitForResult(function(res){
+			if (res.err && !isHPKAError(res.err)){
+				console.error('Error on SessionID agreement: ' + res.err);
+				process.exit(1);
+			}
+
+			assert.equal(res.statusCode, expectedStatusCode, 'Unexpected status code on session agreement: ' + res.statusCode);
+
+			var currentSessionExpiration = res.sessionExpiration;
+			if (expectedSessionExpiration != 0){
+				var upperExpirationWindow = expectedSessionExpiration + 5,
+					lowerExpirationWindow = expectedSessionExpiration - 5;
+				assert(currentSessionExpiration >= lowerExpirationWindow && currentSessionExpiration <= upperExpirationWindow, 'Unexpected session expiration: ' + currentSessionExpiration + '; expected session expiration: ' + expectedSessionExpiration);
+			} else {
+				assert(currentSessionExpiration == 0, 'Unexpected non-null session expiration: ' + currentSessionExpiration);
+			}
+
+			assert.equal(res.body, expectedBody, 'Unexpected response body on session agreement: ' + res.body);
+
+			testSessionId = res.sessionId;
+
+			cb();
+		});
+	})
+	.catch(function(e){
+		console.error('Error on SessionID agreement: ' + e);
+		process.exit(1);
+	});
+};
+
+exports.sessionRevocationReq = function(cb, _expectedBody, _expectedStatusCode){
+	if (typeof cb != 'function') throw new TypeError('cb must be a function');
+
+	if (_expectedBody && !isString(_expectedBody)) throw new TypeError('when defined, _expectedBody must be a non-null string');
+	validStatusCode(_expectedStatusCode);
+
+	var expectedBody = _expectedBody || 'SessionId revoked';
+	var expectedStatusCode = _expectedStatusCode || 200;
+
+	testPage.evaluate(function(serverSettings, sessionId){
+		testClient.revokeSession(serverSettings, sodium.from_hex(sessionId), function(err, statusCode, body, headers){
+			var r = {
+				err: err,
+				statusCode: statusCode,
+				body: body,
+				headers: headers
+			};
+			cbResult = r;
+		});
+	}, serverSettings, testSessionId)
+	.then(function(){
+		waitForResult(function(res){
+			if (res.err && !isHPKAError(res.err)){
+				console.error('Error on session revocation: ' + res.err);
+				process.exit(1);
+			}
+
+			assert.equal(res.statusCode, expectedStatusCode, 'Unexpected status code on session revocation: ' + res.statusCode);
+			assert.equal(res.body, expectedBody, 'Unexpected response body on session revocation: ' + res.body);
+
+			cb();
+		});
+	})
+	.catch(function(e){
+		console.error('Error on session revocation: ' + e);
+		process.exit(1);
+	});
+};
+
+exports.sessionAuthenticatedReq = function(cb, strictMode, _expectedBody, _expectedSuccess, _usingSessionId){
+	if (typeof cb != 'function') throw new TypeError('cb must be a function');
+
+	if (_expectedBody && !isString(_expectedBody)) throw new TypeError('when defined, _expectedBody must be a non-null string');
+	var expectedBody = _expectedBody;
+
+	if (_expectedSuccess == null || typeof _expectedSuccess == 'undefined') _expectedSuccess = true; //If _expectedSuccess is omitted, set it to true
+
+	if (_expectedSuccess){
+		expectedBody = expectedBody || ('Authenticated as : ' + testUsername);
+	} else {
+		if (strictMode){
+			expectedBody = expectedBody || 'Invalid token';
+		} else {
+			expectedBody = expectedBody || 'Anonymous user';
+		}
+	}
+
+	var expectedStatusCode;
+	if (strictMode) expectedStatusCode = _expectedSuccess ? 200 : 445; //In strict mode, if the authentication fails a 445 status code is returned
+	else expectedStatusCode = 200;
+
+	var expectedHPKAErrValue = '2';
+
+	var sId = _usingSessionId || testSessionId;
+
+	testPage.evaluate(function(serverSettings, sId){
+		var sessionPayloadStr = hpka.buildSessionPayload(testUsername, sodium.from_hex(sId));
+
+		if (serverSettings.headers) serverSettings.headers['HPKA-Session'] = sessionPayloadStr;
+		else serverSettings.headers = {'HPKA-Session': sessionPayloadStr};
+
+		hpka.defaultAgent(serverSettings, function(err, statusCode, body, headers){
+			var r = {
+				err: err,
+				statusCode: statusCode,
+				body: body,
+				headers: headers
+			};
+			cbResult = r;
+		});
+
+	}, serverSettings, sId)
+	.then(function(){
+		waitForResult(function(res){
+			if (res.err && !isHPKAError(res.err)){
+				console.error('Error on session-authenticated request: ' + err);
+				process.exit(1);
+			}
+
+			assert.equal(res.statusCode, expectedStatusCode, 'Unexpected status code on session-authenticated request: ' + res.statusCode);
 
 			if (strictMode){
-				assert.equal(res.body, expectedBody, 'Unexpected response body in authenticated request (strict-mode): ' + res.body);
-				if (_expectedSuccess) assert.equal(res.err.toLowerCase().replace(/ +/g, ''), 'hpka-error:' + expectedHPKAErrValue, 'Unexpected HPKA error code: ' + res.err);
+				assert.equal(res.body, expectedBody, 'Unexpected response body on session-authenticated request (strict-mode): ' + res.body);
+				if (!_expectedSuccess){
+					console.error('Received headers on expected failure: ' + JSON.stringify(res.headers));
+					assert.equal(res.headers['hpka-error'] || res.headers['HPKA-Error'], expectedHPKAErrValue, 'Unexpected HPKA error code: ' + (res.headers['hpka-error'] || res.headers['HPKA-Error']));
+				}
 			} else {
-				assert.equal(res.body, expectedBody, 'Unexpected response body in authenticated request (non-strict mode):' + res.body);
+				assert.equal(res.body, expectedBody, 'Unexpected response body on session-authenticated request (non strict-mode): ' + res.body);
 			}
 
 			cb();
 		});
-	});*/
-};
-
-exports.deletionReq = function(cb, _expectedBody, _expectedStatusCode){
-
-};
-
-exports.keyRotationReq = function(cb, newKeyPath, _expectedBody, _expectedStatusCode){
-
-};
-
-exports.sessionAgreementReq = function(cb, wantedSessionExpiration, _expectedBody, _expectedStatusCode, _expectedSessionExpiration){
-
-};
-
-exports.sessionRevocationReq = function(cb, _expectedBody, _expectedStatusCode){
-
-};
-
-exports.sessionAuthenticatedReq = function(cb, strictMode, _expectedBody, _expectedSuccess, _usingSessionId){
-
+	})
+	.catch(function(err){
+		console.error('Error on session-authenticated request: ' + err);
+		process.exit(1);
+	});
 };
 
 exports.getUserSessions = function(){
