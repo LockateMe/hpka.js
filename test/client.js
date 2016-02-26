@@ -50,13 +50,6 @@ function equalToOne(val, matchingArray){
 	return false;
 }
 
-/*function runInBrowser(func, args, cb){
-	if (!testPage) throw new TypeError('testPage is not yet initialized');
-	var evalArgs = [func, cb];
-	for (var i = 0; i < args.length; i++) evalArgs.push(args[i]);
-	testPage.evaluate.apply(this, evalArgs);
-}*/
-
 function performReq(reqOptions, body, callback){
 
 	testPage.evaluate(function(reqOptions, body){
@@ -130,16 +123,11 @@ exports.start = function(cb){
 			.then(function(_p){
 				testPage = _p;
 
-				/*testPage.property('onConsoleMessage', function(m, msgLine){
-					log('Page message: ' + m);
-				});*/
-
 				testPage.open('http://' + serverSettings.host + ':' + serverSettings.port + '/unit.html').then(function(status){
 
-					/*testPage.property('onConsoleMessage', function(msg, lineNum, sourceId) {
-						log('CONSOLE: ' + msg + ' (from line #' + lineNum + ' in "' + sourceId + '")');
+					testPage.property('onConsoleMessage', function(msg, lineNum, sourceId) {
+						console.log(msg + ' (from line #' + lineNum + ' in "' + sourceId + '")');
 					});
-					*/
 
 					if (cb) cb();
 				});
@@ -213,23 +201,6 @@ exports.registrationReq = function(cb, _expectedBody, _expectedStatusCode){
 		console.error('Error on registrationReq: ' + e);
 		process.exit(1);
 	});
-
-	/*runInBrowser(function(serverSettings){
-		testClient.registerUser(serverSettings, function(err, statusCode, body){
-			var r = {err: err, statusCode: statusCode, body: body};
-			cbResult = r;
-		});
-	}, [serverSettings], function(){
-		waitForResult(function(res){
-			if (res.err && !isHPKAError(res.err)){
-				throw res.err;
-			}
-
-			assert.equal(res.statusCode, expectedStatusCode, 'Unexpected status code on registration: ' + res.statusCode);
-			assert.equal(res.body, expectedBody, 'Unexpected message on registration: ' + res.body);
-			cb();
-		});
-	})*/
 };
 
 exports.authenticatedReq = function(cb, withForm, strictMode, _expectedBody, _expectedSuccess){
@@ -435,7 +406,7 @@ exports.sessionAgreementReq = function(cb, wantedSessionExpiration, _expectedBod
 		});
 	})
 	.catch(function(e){
-		console.error('Error on SessionID agreement: ' + e);
+		console.error('Error on SessionID agreement: ' + JSON.stringify(e));
 		process.exit(1);
 	});
 };

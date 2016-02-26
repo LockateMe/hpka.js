@@ -49,7 +49,6 @@ function writeHpkaErr(res, message, errorCode){
 	writeRes(res, message, {'HPKA-Error': errorCode}, 445);
 }
 
-
 var getHandler = function(req, res){
 	var headers = {'Content-Type': 'text/plain'};
 	var body;
@@ -156,7 +155,7 @@ var keyRotation = function(HPKAReq, newKeyReq, req, res){
 
 var sessionCheck = function(SessionReq, req, res, callback){
 	var username = SessionReq.username;
-	var sessionId = SessionReq.sessionId;
+	var sessionId = SessionReq.sessionIdBuffer.toString('hex');
 
 	if (!sessions[username]){
 		callback(false);
@@ -176,7 +175,7 @@ var sessionCheck = function(SessionReq, req, res, callback){
 
 var sessionAgreement = function(HPKAReq, req, callback){
 	var username = HPKAReq.username;
-	var sessionId = HPKAReq.sessionId;
+	var sessionId = HPKAReq.sessionIdBuffer.toString('hex');
 	//Expiration date agreement
 	var finalSessionExpiration;
 	var n = Math.floor(Date.now() / 1000);
@@ -211,7 +210,7 @@ var sessionAgreement = function(HPKAReq, req, callback){
 
 var sessionRevocation = function(HPKAReq, req, callback){
 	var username = HPKAReq.username;
-	var sessionId = HPKAReq.sessionId;
+	var sessionId = HPKAReq.sessionIdBuffer.toString('hex');
 	//Check keys
 	if (HPKAReq.checkPublicKeyEqualityWith(userList[username])){
 		//Revoke sessionId
@@ -275,10 +274,9 @@ exports.stop = function(cb){
 		return;
 	}
 
-	server.close(function(){
-		server = undefined;
-		if (cb) cb();
-	});
+	server.close();
+	server = undefined;
+	if (cb) cb();
 };
 
 exports.getServerPort = function(){
@@ -295,7 +293,8 @@ exports.getMaxSessionLife = function(){
 };
 
 exports.setMaxSessionLife = function(ttl){
-	if (!(typeof ttl == 'number' && ttl > 0 && ttl == Math.floor(ttl))) throw new TypeError('n must be a positive integer number');
+	if (!(typeof ttl == 'number' && ttl >= 0 && ttl == Math.floor(ttl))) throw new TypeError('n must be a positive integer number');
+	maxSessionsLife = ttl;
 };
 
 exports.setYell = function(_y){
