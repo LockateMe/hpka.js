@@ -22,8 +22,8 @@
   "devDependencies": {
     "body-parser": "^1.15.0",
     "express": "^4.13.4",
-    "hpka": "^0.4.0",
-    "phantom": "^2.0.0",
+    "hpka": "^0.4.1",
+    "phantom": "^2.0.2",
     "sodium": "git+https://github.com/Mowje/node-sodium.git#3ed92bd41957bc0e0d30e753c4cb630d6617a6b4"
   }
 }
