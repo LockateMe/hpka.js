@@ -1144,7 +1144,7 @@ var hpka = (function(){
 		if (actionType == 0x04 || actionType == 0x05){
 			//Writing sessionId length
 			buffer[offset] = sessionId.length;
-			offset;
+			offset++;
 			//Writing sessionId
 			for (var i = 0; i < sessionId.length; i++){
 				buffer[offset + i] = sessionId[i];
@@ -1184,13 +1184,14 @@ var hpka = (function(){
 		payloadBuf[offset] = 0x01;
 		offset++;
 		//Writing username length
-		payloadBuf[offset] = username.length;
+		var usernameBuf = string_to_buffer(username);
+		payloadBuf[offset] = usernameBuf.length;
 		offset++;
 		//Writing username
-		for (var i = 0; i < username.length; i++){
-			payloadBuf[offset + i] = username[i];
+		for (var i = 0; i < usernameBuf.length; i++){
+			payloadBuf[offset + i] = usernameBuf[i];
 		}
-		offset += username.length;
+		offset += usernameBuf.length;
 		//Writing timestamp
 		var timestamp = Math.floor(Date.now() / 1000);
 		var timestampParts = splitUInt(timestamp);
@@ -1199,6 +1200,7 @@ var hpka = (function(){
 		writeUInt32BE(timestampParts.right, offset, payloadBuf);
 		offset += 4;
 		//Writing sessionId length
+		if (typeof sessionId == 'string') sessionId = string_to_buffer(sessionId);
 		payloadBuf[offset] = sessionId.length;
 		offset++;
 		//Writing sessionId
