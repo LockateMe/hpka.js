@@ -31,7 +31,7 @@ do {
 	currentTestCase.disallowSessions = (state & 0x01) == 1;
 } while (state != 0);
 
-function performTests(strictMode, disallowSessions, next, taskIndex, testTotal){
+function performTests(strictMode, disallowSessions, next, testIndex, testTotal){
 	if (typeof next != 'function') throw new TypeError('next must be a function');
 
 	log('---------------NEW TEST CASE---------------');
