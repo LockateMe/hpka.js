@@ -23,7 +23,7 @@ libsodium-js/Makefile:
 test: out/sodium.js test/server_built
 	cp out/* test/
 	# echo "Go to http://localhost:2500/test.html to test hpka.js"
-	iojs test/index.js || nodejs test/index.js || node test/index.js
+	iojs test/index.js verbose || nodejs test/index.js verbose || node test/index.js verbose
 
 test/server_built:
 	npm install
