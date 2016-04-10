@@ -1142,6 +1142,7 @@ var hpka = (function(){
 		offset += keyPair.publicKey.length;
 
 		if (actionType == 0x04 || actionType == 0x05){
+			if (typeof sessionId == 'string') sessionId = string_to_buffer(sessionId);
 			//Writing sessionId length
 			buffer[offset] = sessionId.length;
 			offset++;
