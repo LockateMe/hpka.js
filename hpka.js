@@ -294,7 +294,7 @@ var hpka = (function(){
 						}
 						//Check headers format. Interrupt execution and send error through callback if it fails
 						headers = processHeaders(headers, reqOptions, callback);
-						if (!headers) return;
+						//if (!headers) return;
 						//If this line is reached, then processHeaders succeeded
 						//Look for HPKA Errors
 						if (statusCode == 445){
@@ -326,7 +326,7 @@ var hpka = (function(){
 						return;
 					}
 					headers = processHeaders(headers, reqOptions, callback);
-					if (!headers) return;
+					//if (!headers) return;
 					//If this line is reached, then processHeaders succeeded
 					//Look for HPKA errors
 					if (statusCode == 445){
@@ -343,7 +343,7 @@ var hpka = (function(){
 
 		function processHeaders(h, reqOptions, callback){
 			if (!h){
-				callback(new Error('Critical: didn\'t receive headers from ' + reqOptions.host + reqOptions.path));
+				console.error('Critical: didn\'t receive headers from ' + reqOptions.host + reqOptions.path);
 				return;
 			}
 			if (typeof h == 'object') return h;
